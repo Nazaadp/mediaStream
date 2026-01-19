@@ -43,14 +43,34 @@ public:
 
     // Obtener lista de archivos descargados (simplificado para MVP)
     std::string get_status() {
+
         std::string status_list = "";
         std::vector<lt::torrent_handle> handles = session_.get_torrents();
+
+        if (handles.empty()) {
+            return "No active torrents.";
+        }
+
         for (const auto& h : handles) {
             if (!h.is_valid()) continue;
+
             lt::torrent_status s = h.status();
-            status_list += s.name + " [" + (s.is_seeding ? "Ready" : "Downloading") + "]\n";
+
+            int progress_percent = static_cast<int>(s.progress * 100);
+
+            std::string state_str;
+            if (s.is_seeding || s.is_finished) {
+                state_str = "Ready (100%)";
+            } else {
+                state_str = "Downloading " + std::to_string(progress_percent) + "%";
+
+                int download_rate = s.download_rate / 1000; // KB/s
+                state_str += " - " + std::to_string(download_rate) + " KB/s";
+            }
+
+            status_list += s.name + " [" + state_str + "]\n";
         }
-        if (status_list.empty()) return "No active torrents.";
+
         return status_list;
     }
 
