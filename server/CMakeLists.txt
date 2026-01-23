@@ -17,7 +17,7 @@ endif()
 
 # --- 2. Dependencies (Conan) ---
 # Assuming you use the conan_provider.cmake or conan_toolchain.cmake
-find_package(libtorrent REQUIRED)
+find_package(LibtorrentRasterbar REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 
