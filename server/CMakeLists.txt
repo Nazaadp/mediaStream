@@ -36,6 +36,9 @@ target_link_libraries(MediaCore PRIVATE
     LibtorrentRasterbar::torrent-rasterbar
     spdlog::spdlog
     fmt::fmt
+    oatpp::oatpp
+    oatpp::oatpp-swagger
+    oatpp::oatpp-sqlite
 )
 
 # Define the Executable (The "Runner")

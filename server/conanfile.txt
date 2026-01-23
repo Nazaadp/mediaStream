@@ -2,6 +2,9 @@
 libtorrent/2.0.10
 spdlog/1.12.0
 fmt/10.2.1
+oatpp/1.3.0
+oatpp-swagger/1.3.0
+oatpp-sqlite/1.3.0
 
 [generators]
 CMakeDeps
