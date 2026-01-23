@@ -16,6 +16,7 @@
 #if defined(__linux__)
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #endif
 
 // --- GLOBAL SIGNAL STATE ---
@@ -49,7 +50,7 @@ void enforce_security_context() {
 #endif
 }
 
-int main(int argc, char* argv[]) {
+int main() {
     // 1. Bootstrap Logging (Console for now, File later)
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     auto logger = std::make_shared<spdlog::logger>("console", console_sink);
