@@ -101,7 +101,7 @@ namespace media::core {
         spdlog::info("Session resumed.");
     }
 
-    std::vector<TorrentStatus> TorrentEngine::getSessionStatus() {
+    std::vector<TorrentStatus> TorrentEngine::getSessionStatus() const {
         std::vector<TorrentStatus> statuses;
         std::vector<lt::torrent_handle> handles = m_pimpl->session.get_torrents();
 
