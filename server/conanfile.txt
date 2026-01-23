@@ -1,5 +1,5 @@
 [requires]
-libtorrent-rasterbar/2.0.10
+libtorrent/2.0.10
 spdlog/1.12.0
 fmt/10.1.1
 
