@@ -1,4 +1,4 @@
-#include "core/TorrentEngine.hpp"
+#include "mediastream/core/TorrentEngine.hpp"
 
 // External Dependencies (Isolated here)
 #include <libtorrent/session.hpp>
