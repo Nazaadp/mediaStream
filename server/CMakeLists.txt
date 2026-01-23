@@ -20,6 +20,9 @@ endif()
 find_package(LibtorrentRasterbar REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
+find_package(oatpp REQUIRED)
+find_package(oatpp-swagger REQUIRED)
+find_package(oatpp-sqlite REQUIRED)
 
 # --- 3. Structure Definition ---
 # Add the 'include' directory to the global search path
