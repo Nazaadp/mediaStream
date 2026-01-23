@@ -11,6 +11,7 @@
 
 // Internal Domain
 #include "mediastream/core/TorrentEngine.hpp"
+#include "mediastream/api/HttpServer.hpp"
 
 // Platform specific (Linux) for User ID checks
 #if defined(__linux__)
@@ -67,45 +68,39 @@ int main() {
     std::signal(SIGINT, signal_handler);  // Ctrl+C
     std::signal(SIGTERM, signal_handler); // kill <pid>
 
-    // 4. Main Execution Block
+    // 4. Oat++ Init
+    oatpp::base::Environment::init();
+
+    // 5. Main Execution Block
     // Wrap in try-catch to prevent "terminate called without an active exception" crashes.
     try {
-        // CONFIGURATION (Hardcoded for Phase 1, move to config.json later)
-        const std::filesystem::path download_dir = "./downloads";
-        
-        spdlog::info("Initializing Torrent Engine...");
-        media::core::TorrentEngine engine(download_dir);
 
-        spdlog::info("System Ready. Waiting for commands.");
+        // 1. The Core (Domain)
+        spdlog::info("Booting Core...");
+        auto engine = std::make_shared<media::core::TorrentEngine>("./downloads");
 
-        // --- TEST CODE (Uncomment to test Phase 1) ---
-        // engine.addMagnet("magnet:?xt=urn:btih:...");
-        // ---------------------------------------------
+        // 2. The API (Interface)
+        spdlog::info("Booting API...");
+        media::api::HttpServer api_server(engine);
+        api_server.start();
 
-        // 5. The "Event Loop"
-        // Since we don't have a REST API listener yet (Phase 3), 
-        // we manually keep the main thread alive.
+        // 3. The Keep-Alive Loop
+        spdlog::info("System Online.");
         while (g_keep_running) {
-            // Wake up every 1 second to check status or signals
             std::this_thread::sleep_for(std::chrono::seconds(1));
-
-            // Optional: Periodic Status Logging
-            // auto status = engine.getSessionStatus();
-            // spdlog::debug("Active Torrents: {}", status.size());
         }
 
+        // 4. Shutdown
+        spdlog::info("Shutting down...");
+        api_server.stop(); // Cleanly stop the web server
+        // engine destructor runs automatically here
+
     } catch (const std::exception& ex) {
-        spdlog::critical("Unrecoverable Error: {}", ex.what());
-        return EXIT_FAILURE;
-    } catch (...) {
-        spdlog::critical("Unknown Error occurred during execution.");
-        return EXIT_FAILURE;
+        spdlog::critical("Fatal Error: {}", ex.what());
     }
 
-    // 6. Graceful Shutdown
-    // When the loop breaks, the 'engine' variable goes out of scope.
-    // The Destructor (~TorrentEngine) fires automatically, saving state/pausing sessions.
-    spdlog::info("MediaStream Server shutdown complete. Goodbye.");
-    
+    oatpp::base::Environment::destroy();
+
+    spdlog::info("Goodbye.");
     return EXIT_SUCCESS;
 }

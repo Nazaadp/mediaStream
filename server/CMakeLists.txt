@@ -42,7 +42,10 @@ target_link_libraries(MediaCore PRIVATE
 )
 
 # Define the Executable (The "Runner")
-add_executable(mediastream_server src/main.cpp)
+add_executable(
+    mediastream_server src/main.cpp
+    src/api/HttpServer.cpp
+)
 
 # Link the Executable to the Core
 target_link_libraries(mediastream_server PRIVATE
