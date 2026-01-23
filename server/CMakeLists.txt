@@ -17,7 +17,7 @@ endif()
 
 # --- 2. Dependencies (Conan) ---
 # Assuming you use the conan_provider.cmake or conan_toolchain.cmake
-find_package(libtorrent-rasterbar REQUIRED)
+find_package(libtorrent REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 
@@ -33,7 +33,7 @@ add_library(MediaCore
 
 # Link Dependencies to the Core
 target_link_libraries(MediaCore PRIVATE 
-    libtorrent-rasterbar::libtorrent-rasterbar
+    LibtorrentRasterbar::torrent-rasterbar
     spdlog::spdlog
     fmt::fmt
 )
