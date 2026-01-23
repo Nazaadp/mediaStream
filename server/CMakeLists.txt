@@ -1,21 +1,45 @@
-cmake_minimum_required(VERSION 3.10)
-project(MediaServer)
+cmake_minimum_required(VERSION 3.20)
+project(MediaStreamServer VERSION 2.0.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+# --- 1. Security & Standards ---
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Encontrar paquetes
-find_package(Boost REQUIRED COMPONENTS system)
-find_package(OpenSSL REQUIRED)
-# libtorrent a veces requiere configuración manual si pkg-config falla, 
-# pero intentaremos el enlace estándar.
-find_library(LIBTORRENT_LIB torrent-rasterbar)
+# Compiler Hardening (GCC/Clang)
+# -Wall -Wextra: Enable warnings
+# -Werror: Treat warnings as errors (Strict discipline)
+# -fstack-protector-strong: Buffer overflow protection
+if(MSVC)
+    add_compile_options(/W4 /WX)
+else()
+    add_compile_options(-Wall -Wextra -Werror -fstack-protector-strong)
+endif()
 
-add_executable(server main.cpp)
+# --- 2. Dependencies (Conan) ---
+# Assuming you use the conan_provider.cmake or conan_toolchain.cmake
+find_package(libtorrent-rasterbar REQUIRED)
+find_package(spdlog REQUIRED)
+find_package(fmt REQUIRED)
 
-target_link_libraries(server 
-    ${Boost_LIBRARIES} 
-    ${LIBTORRENT_LIB} 
-    OpenSSL::SSL 
-    OpenSSL::Crypto
-    pthread
+# --- 3. Structure Definition ---
+# Add the 'include' directory to the global search path
+include_directories(include)
+
+# Define the Main Library (The "Core")
+add_library(MediaCore
+    src/core/TorrentEngine.cpp
+    # Add future source files here
 )
+
+# Link Dependencies to the Core
+target_link_libraries(MediaCore PRIVATE 
+    libtorrent-rasterbar::libtorrent-rasterbar
+    spdlog::spdlog
+    fmt::fmt
+)
+
+# Define the Executable (The "Runner")
+add_executable(mediastream_server src/main.cpp)
+
+# Link the Executable to the Core
+target_link_libraries(mediastream_server PRIVATE MediaCore)
