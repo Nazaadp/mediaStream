@@ -34,19 +34,18 @@ add_library(MediaCore
     # Add future source files here
 )
 
+target_include_directories(MediaCore PUBLIC include)
+
 # Link Dependencies to the Core
 target_link_libraries(MediaCore PRIVATE 
     LibtorrentRasterbar::torrent-rasterbar
     spdlog::spdlog
     fmt::fmt
-    oatpp::oatpp
-    oatpp::oatpp-swagger
-    oatpp::oatpp-sqlite
 )
 
 # Define the Executable (The "Runner")
-add_executable(
-    mediastream_server src/main.cpp
+add_executable(mediastream_server
+    src/main.cpp
     src/api/HttpServer.cpp
 )
 
@@ -54,4 +53,17 @@ add_executable(
 target_link_libraries(mediastream_server PRIVATE
     MediaCore
     spdlog::spdlog
+    oatpp::oatpp             # Main/HttpServer
+    oatpp::oatpp-swagger     # Swagger UI
+    oatpp::oatpp-sqlite      # Database
 )
+
+# 5. Compiler Flags
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(mediastream_server PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    target_compile_options(MediaCore PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
+# 6. Standard
+set_property(TARGET mediastream_server PROPERTY CXX_STANDARD 20)
+set_property(TARGET MediaCore PROPERTY CXX_STANDARD 20)
