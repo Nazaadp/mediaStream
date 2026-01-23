@@ -42,4 +42,7 @@ target_link_libraries(MediaCore PRIVATE
 add_executable(mediastream_server src/main.cpp)
 
 # Link the Executable to the Core
-target_link_libraries(mediastream_server PRIVATE MediaCore)
+target_link_libraries(mediastream_server PRIVATE
+    MediaCore
+    spdlog::spdlog
+)
