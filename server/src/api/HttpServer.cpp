@@ -7,10 +7,8 @@
 #include "oatpp/web/server/HttpConnectionHandler.hpp"
 #include "oatpp/parser/json/mapping/ObjectMapper.hpp"
 
-// Swagger Headers
-#include "oatpp-swagger/Controller.hpp"
-#include "oatpp-swagger/Model.hpp" // <--- Needed for DocumentInfo
-#include "oatpp-swagger/Resources.hpp" // <--- Needed for Resources
+// SWAGGER DISABLED FOR PHASE 3 TESTING
+// #include "oatpp-swagger/Controller.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -53,23 +51,9 @@ namespace media::api {
             auto torrentController = std::make_shared<TorrentController>(objectMapper, m_engine);
             router->addController(torrentController);
 
-            // 2. Register Swagger (Strict Oat++ 1.3.0 syntax)
-            auto docInfo = oatpp::swagger::DocumentInfo::createShared();
-            docInfo->header = oatpp::swagger::DocumentInfo::Header::createShared();
-            docInfo->header->title = "MediaStream API";
-            docInfo->header->version = "2.0";
-
-            docInfo->info = oatpp::swagger::DocumentInfo::Info::createShared();
-            docInfo->info->description = "C++20 BitTorrent Server";
-
-            // B. Manually collect endpoints (Router doesn't share them in 1.3.0)
-            auto endpoints = oatpp::web::server::api::Endpoints::createShared();
-            endpoints->append(torrentController->getEndpoints());
+            // 2. Swagger Disabled (Bypassing version conflict)
+            // We will verify the API using raw CURL commands instead.
             
-            // Create the controller using the Router's endpoints
-            auto swaggerController = oatpp::swagger::Controller::createShared(endpoints, docInfo);
-            router->addController(swaggerController);
-
             // 3. Create Server
             oatpp::network::Server server(connectionProvider, 
                                           oatpp::web::server::HttpConnectionHandler::createShared(router));
