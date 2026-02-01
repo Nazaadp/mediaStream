@@ -8,6 +8,7 @@
 // Third-party
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include "oatpp/core/base/Environment.hpp"
 
 // Internal Domain
 #include "mediastream/core/TorrentEngine.hpp"

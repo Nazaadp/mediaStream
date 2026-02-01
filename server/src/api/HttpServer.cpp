@@ -38,7 +38,7 @@ namespace media::api {
         m_should_run = false; // The loop in run_internal will see this and break
         
         if (m_server_thread.joinable()) {
-            m_server_thread.join();
+            m_server_thread.detach();
         }
         spdlog::info("HttpServer stopped.");
     }
@@ -55,9 +55,10 @@ namespace media::api {
             router->addController(torrentController);
 
             // 3. Register Swagger
-            oatpp::swagger::DocumentInfo docInfo;
-            docInfo.title = "MediaStream API";
-            docInfo.version = "2.0";
+            auto docInfo = oatpp::swagger::DocumentInfo::createShared();
+            docInfo->title = "MediaStream API";
+            docInfo->version = "2.0";
+
             auto swaggerController = oatpp::swagger::Controller::createShared(docInfo);
             swaggerController->addEndpointsToRouter(router);
 
@@ -67,20 +68,22 @@ namespace media::api {
             
             spdlog::info("REST API listening on port 8000...");
 
-            // 5. The Loop
-            // We verify m_should_run every 100ms so we can shut down cleanly
-            while (m_should_run) {
-                if (!server.run(true)) { 
-                    // .run(true) processes one connection/tick and returns
-                    // If it returns false, the socket is broken
-                    break; 
-                }
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            }
+            server.run();
 
-            // Cleanup
-            server.stop();
-            connectionProvider->stop();
+            // // 5. The Loop
+            // // We verify m_should_run every 100ms so we can shut down cleanly
+            // while (m_should_run) {
+            //     if (!server.run(true)) { 
+            //         // .run(true) processes one connection/tick and returns
+            //         // If it returns false, the socket is broken
+            //         break; 
+            //     }
+            //     std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            // }
+
+            // // Cleanup
+            // server.stop();
+            // connectionProvider->stop();
 
         } catch (const std::exception& e) {
             spdlog::critical("HttpServer Crash: {}", e.what());

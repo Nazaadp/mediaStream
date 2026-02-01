@@ -43,15 +43,23 @@ public:
                  return createDtoResponse(Status::CODE_400, "Missing magnet_link");
             }
 
-            spdlog::info("API: Received addTorrent request");
             // In a real app, we would parse JSON here. 
             // For now, assume the raw body is the magnet link.
-            m_engine->addMagnet(body);
+            spdlog::info("API: Adding magnet: {}", dto->magnet_link->c_str());
+            m_engine->addMagnet(dto->magnet_link);
+
+            auto response = MessageDto::createShared();
+            response->status_code = 200;
+            response->message = "Torrent added successfully";
             
-            return createDtoResponse(Status::CODE_200, "Torrent added successfully");
+            return createDtoResponse(Status::CODE_200, response);
+
         } catch (const std::exception& e) {
             spdlog::error("API Error: {}", e.what());
-            return createDtoResponse(Status::CODE_400, e.what());
+            auto err = MessageDto::createShared();
+            err->status_code = 400;
+            err->message = e.what();
+            return createDtoResponse(Status::CODE_400, err);
         }
     }
 
@@ -77,7 +85,7 @@ public:
             response_list->push_back(dto);
         }
 
-        return createResponse(Status::CODE_200, response_list);
+        return createDtoResponse(Status::CODE_200, response_list);
     }
 
 private:
