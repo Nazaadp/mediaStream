@@ -1,5 +1,11 @@
 #pragma once
 
+// --- 1. CRITICAL INCLUDES ---
+#include <libtorrent/session.hpp>       // <--- REQUIRED for m_session
+#include <libtorrent/torrent_handle.hpp>
+#include <libtorrent/version.hpp>
+// ----------------------------
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -19,37 +25,23 @@ namespace media::core {
 
     class TorrentEngine {
     public:
-        // Constructor: define save_path where files will land
+        // Constructor
         explicit TorrentEngine(const std::filesystem::path& save_path);
         
-        // Rule of 5: PIMPL requires a defined destructor in the .cpp
+        // Destructor
         ~TorrentEngine();
-        TorrentEngine(TorrentEngine&&) noexcept;
-        TorrentEngine& operator=(TorrentEngine&&) noexcept;
-        
-        // Delete copy to ensure unique ownership of the session
-        TorrentEngine(const TorrentEngine&) = delete;
-        TorrentEngine& operator=(const TorrentEngine&) = delete;
 
         // Core Actions
-        // Throws std::invalid_argument if magnet link is malformed
         void addMagnet(const std::string& magnet_uri);
         void removeTorrent(const std::string& info_hash);
         
-        void pause();
-        void resume();
-        
-        // Returns snapshot of current state. 
-        // In a real system, we might use a callback/observer pattern, 
-        // but polling is acceptable for Phase 1.
+        // Status
         [[nodiscard]] std::vector<TorrentStatus> getSessionStatus() const;
 
     private:
-        // Forward declaration of the implementation struct
-        struct Impl;
-        std::unique_ptr<Impl> m_pimpl;
-        libtorrent::session m_session;
-        std::filesystem::path save_path;
+        // --- 2. DIRECT IMPLEMENTATION (Matches your .cpp) ---
+        libtorrent::session m_session; 
+        std::filesystem::path save_path; // Renamed to match your .cpp
     };
 
 } // namespace media::core
