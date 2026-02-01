@@ -149,7 +149,7 @@ namespace media::core {
 
             s.info_hash = to_hex_string(h.info_hash());
             s.name = ts.name;
-            s.progress = ts.progress_ppm
+            s.progress = ts.progress;
             s.num_peers = ts.num_peers;
             
             // Map libtorrent state to clean string
