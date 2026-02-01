@@ -19,6 +19,7 @@ namespace media::api {
     class TorrentStatusDto : public oatpp::DTO {
         DTO_INIT(TorrentStatusDto, DTO)
 
+        DTO_FIELD(String, info_hash);
         DTO_FIELD(String, name);
         DTO_FIELD(Float32, progress);
         DTO_FIELD(String, state);

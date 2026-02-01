@@ -9,6 +9,7 @@
 namespace media::core {
 
     struct TorrentStatus {
+        std::string info_hash;
         std::string name;
         float progress; // 0.0 to 1.0
         int download_rate; // bytes per second
@@ -33,6 +34,7 @@ namespace media::core {
         // Core Actions
         // Throws std::invalid_argument if magnet link is malformed
         void addMagnet(const std::string& magnet_uri);
+        void removeTorrent(const std::string& info_hash);
         
         void pause();
         void resume();

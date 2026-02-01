@@ -91,6 +91,29 @@ namespace media::core {
         }
     }
 
+    void TorrentEngine::removeTorrent(const std::string& info_hash) {
+        // 1. Get all active handles
+        std::vector<lt::torrent_handle> handles = m_session.get_torrents();
+        
+        // 2. Find the one matching the hash
+        for (auto& h : handles) {
+            if (!h.is_valid()) continue;
+            
+            // Convert internal hash to string to compare
+            std::string current_hash = lt::aux::to_hex(h.info_hash()); 
+            
+            // Libtorrent hex strings are often uppercase, input might be lower.
+            // For simplicity, we assume exact match or handle casing in a utility.
+            // Let's rely on the API sending the exact string we gave it.
+            if (current_hash == info_hash) {
+                // 3. Remove it (and delete files if you want 'options::delete_files')
+                m_session.remove_torrent(h);
+                return;
+            }
+        }
+        throw std::runtime_error("Torrent not found");
+    }
+
     void TorrentEngine::pause() {
         m_pimpl->session.pause();
         spdlog::info("Session paused.");
@@ -111,6 +134,7 @@ namespace media::core {
             lt::torrent_status ts = h.status();
             
             TorrentStatus s;
+            s.info_hash = lt::aux::to_hex(ts.info_hash);
             s.name = ts.name;
             s.progress = ts.progress_ppm / 1000000.f; // Precision per million
             s.download_rate = ts.download_payload_rate;

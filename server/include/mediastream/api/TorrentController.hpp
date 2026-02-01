@@ -71,6 +71,7 @@ public:
         
         for (const auto& item : engine_status) {
             auto dto = TorrentStatusDto::createShared();
+            dto->info_hash = item.info_hash;
             dto->name = item.name;
             dto->progress = item.progress;
             dto->state = item.state;
@@ -79,6 +80,34 @@ public:
         }
 
         return createDtoResponse(Status::CODE_200, response_list);
+    }
+
+    // --- ENDPOINT 3: Remove Torrent ---
+    ENDPOINT_INFO(removeTorrent) {
+        info->summary = "Stop and remove a torrent";
+        // Define a Path Parameter "{infoHash}"
+        info->addParameter("infoHash", oatpp::swagger::Parameter::IN_PATH).required = true;
+        info->addResponse<Object<MessageDto>>(Status::CODE_200, "application/json");
+        info->addResponse<Object<MessageDto>>(Status::CODE_404, "application/json");
+    }
+    ENDPOINT("DELETE", "/api/v1/torrents/{infoHash}", removeTorrent,
+             PATH(String, infoHash)) // <--- Capture URL variable
+    {
+        try {
+            spdlog::info("API: Removing torrent: {}", infoHash->c_str());
+            m_engine->removeTorrent(infoHash);
+            
+            auto response = MessageDto::createShared();
+            response->status_code = 200;
+            response->message = "Torrent removed";
+            return createDtoResponse(Status::CODE_200, response);
+        } catch (const std::exception& e) {
+            spdlog::error("API Error: {}", e.what());
+            auto err = MessageDto::createShared();
+            err->status_code = 404;
+            err->message = e.what();
+            return createDtoResponse(Status::CODE_404, err);
+        }
     }
     
     // !!! IMPORTANT: The custom createDtoResponse helper is DELETED.
