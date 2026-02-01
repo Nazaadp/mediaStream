@@ -17,6 +17,8 @@
 // Logging
 #include <spdlog/spdlog.h>
 
+namespace lt = libtorrent;
+
 namespace media::core {
 
     // Helper: Safe Hex Converter (Libtorrent 2.0 compatible)

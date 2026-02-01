@@ -48,7 +48,7 @@ namespace media::core {
         // Forward declaration of the implementation struct
         struct Impl;
         std::unique_ptr<Impl> m_pimpl;
-        lt::session m_session;
+        libtorrent::session m_session;
         std::filesystem::path save_path;
     };
 
