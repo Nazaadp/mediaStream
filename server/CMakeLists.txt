@@ -37,7 +37,7 @@ add_library(MediaCore
 target_include_directories(MediaCore PUBLIC include)
 
 # Link Dependencies to the Core
-target_link_libraries(MediaCore PRIVATE 
+target_link_libraries(MediaCore PUBLIC 
     LibtorrentRasterbar::torrent-rasterbar
     spdlog::spdlog
     fmt::fmt
