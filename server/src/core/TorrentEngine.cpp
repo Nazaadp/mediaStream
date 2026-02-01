@@ -8,11 +8,23 @@
 #include <libtorrent/magnet_uri.hpp>
 #include <libtorrent/alert_types.hpp>
 #include <libtorrent/settings_pack.hpp>
+#include <libtorrent/torrent_info.hpp>
+#include <libtorrent/hex.hpp>
+
+#include <sstream>
+#include <iomanip>
 
 // Logging
 #include <spdlog/spdlog.h>
 
 namespace media::core {
+
+    // Helper: Safe Hex Converter (Libtorrent 2.0 compatible)
+    std::string to_hex_string(const lt::sha1_hash& hash) {
+        std::stringstream ss;
+        ss << hash; // Libtorrent overloads the stream operator for hashes
+        return ss.str();
+    }
 
     struct TorrentEngine::Impl {
         lt::session session;
@@ -134,19 +146,23 @@ namespace media::core {
             lt::torrent_status ts = h.status();
             
             TorrentStatus s;
-            s.info_hash = lt::aux::to_hex(ts.info_hash);
+
+            s.info_hash = to_hex_string(h.info_hash());
             s.name = ts.name;
-            s.progress = ts.progress_ppm / 1000000.f; // Precision per million
-            s.download_rate = ts.download_payload_rate;
+            s.progress = ts.progress_ppm
             s.num_peers = ts.num_peers;
             
             // Map libtorrent state to clean string
             switch(ts.state) {
-                case lt::torrent_status::downloading: s.state = "Downloading"; break;
-                case lt::torrent_status::seeding: s.state = "Seeding"; break;
                 case lt::torrent_status::checking_files: s.state = "Checking"; break;
-                default: s.state = "Queued/Paused";
+                case lt::torrent_status::downloading_metadata: s.state = "Fetching Metadata"; break;
+                case lt::torrent_status::downloading: s.state = "Downloading"; break;
+                case lt::torrent_status::finished: s.state = "Finished"; break;
+                case lt::torrent_status::seeding: s.state = "Seeding"; break;
+                default: s.state = "Queued"; break;
             }
+
+            s.download_rate = ts.download_payload_rate;
             
             statuses.push_back(s);
         }
