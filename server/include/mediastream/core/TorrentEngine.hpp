@@ -26,7 +26,7 @@ namespace media::core {
     class TorrentEngine {
     public:
         // Constructor
-        explicit TorrentEngine(const std::filesystem::path& save_path);
+        explicit TorrentEngine(const std::filesystem::path& m_download_dir);
         
         // Destructor
         ~TorrentEngine();
@@ -41,7 +41,7 @@ namespace media::core {
     private:
         // --- 2. DIRECT IMPLEMENTATION (Matches your .cpp) ---
         libtorrent::session m_session; 
-        std::filesystem::path save_path; // Renamed to match your .cpp
+        std::filesystem::path m_download_dir; // Renamed to match your .cpp
     };
 
 } // namespace media::core
