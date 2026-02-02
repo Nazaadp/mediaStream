@@ -86,7 +86,7 @@ public:
     ENDPOINT_INFO(removeTorrent) {
         info->summary = "Stop and remove a torrent";
         // Define a Path Parameter "{infoHash}"
-        info->addParameter("infoHash", oatpp::swagger::Parameter::IN_PATH).required = true;
+        //info->addParameter("infoHash", oatpp::swagger::Parameter::IN_PATH).required = true;
         info->addResponse<Object<MessageDto>>(Status::CODE_200, "application/json");
         info->addResponse<Object<MessageDto>>(Status::CODE_404, "application/json");
     }
