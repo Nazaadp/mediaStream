@@ -23,6 +23,8 @@ find_package(fmt REQUIRED)
 find_package(oatpp REQUIRED)
 find_package(oatpp-swagger REQUIRED)
 find_package(oatpp-sqlite REQUIRED)
+find_package(CURL REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 # --- 3. Structure Definition ---
 # Add the 'include' directory to the global search path
@@ -31,16 +33,23 @@ include_directories(include)
 # Define the Main Library (The "Core")
 add_library(MediaCore
     src/core/TorrentEngine.cpp
+    src/database/Database.cpp
+    src/services/YTSClient.cpp
+    src/services/EZTVClient.cpp
+    src/services/NyaaClient.cpp
+    src/services/ContentDiscoveryManager.cpp
     # Add future source files here
 )
 
 target_include_directories(MediaCore PUBLIC include)
 
 # Link Dependencies to the Core
-target_link_libraries(MediaCore PUBLIC 
+target_link_libraries(MediaCore PUBLIC
     LibtorrentRasterbar::torrent-rasterbar
     spdlog::spdlog
     fmt::fmt
+    CURL::libcurl
+    nlohmann_json::nlohmann_json
 )
 
 # Define the Executable (The "Runner")
