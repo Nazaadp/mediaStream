@@ -50,7 +50,7 @@ public:
         uint64_t start = 0;
         uint64_t end = file_size - 1;
 
-        if (range && !range->c_str().empty()) {
+        if (range && range->c_str()[0] != '\0') {
             std::string r = range->c_str();
             auto eq_idx = r.find('=');
             if (eq_idx != std::string::npos) {
