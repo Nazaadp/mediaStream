@@ -54,7 +54,7 @@ namespace media::database {
         }
 
         void executeSQL(const std::string& sql) {
-            auto result = executor->execute(sql, {});
+            auto result = executor->execute(sql, std::unordered_map<oatpp::String, oatpp::Void>{});
             if (!result->isSuccess()) {
                 throw std::runtime_error("SQL execution failed: " + sql);
             }
@@ -172,23 +172,24 @@ namespace media::database {
         auto result = m_impl->executor->execute(
             "INSERT INTO media_items (type, title, original_title, year, description, poster_url, "
             "backdrop_url, rating, genres, runtime_minutes, tmdb_id, imdb_id, language, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            {
-                contentTypeToString(item.type),
-                item.title,
-                item.original_title,
-                std::to_string(item.year),
-                item.description,
-                item.poster_url,
-                item.backdrop_url,
-                std::to_string(item.rating),
-                item.genres,
-                std::to_string(item.runtime_minutes),
-                item.tmdb_id,
-                item.imdb_id,
-                item.language,
-                std::to_string(now),
-                std::to_string(now)
+            "VALUES (:type, :title, :original_title, :year, :description, :poster_url, "
+            ":backdrop_url, :rating, :genres, :runtime_minutes, :tmdb_id, :imdb_id, :language, :created_at, :updated_at)",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"type", oatpp::String(contentTypeToString(item.type))},
+                {"title", oatpp::String(item.title)},
+                {"original_title", oatpp::String(item.original_title)},
+                {"year", oatpp::Int32(item.year)},
+                {"description", oatpp::String(item.description)},
+                {"poster_url", oatpp::String(item.poster_url)},
+                {"backdrop_url", oatpp::String(item.backdrop_url)},
+                {"rating", oatpp::Float32(item.rating)},
+                {"genres", oatpp::String(item.genres)},
+                {"runtime_minutes", oatpp::Int32(item.runtime_minutes)},
+                {"tmdb_id", oatpp::String(item.tmdb_id)},
+                {"imdb_id", oatpp::String(item.imdb_id)},
+                {"language", oatpp::String(item.language)},
+                {"created_at", oatpp::Int64(now)},
+                {"updated_at", oatpp::Int64(now)}
             }
         );
 
@@ -200,8 +201,10 @@ namespace media::database {
 
     std::optional<MediaItem> Database::getMediaItem(int id) {
         auto result = m_impl->executor->execute(
-            "SELECT * FROM media_items WHERE id = ?",
-            {std::to_string(id)}
+            "SELECT * FROM media_items WHERE id = :id",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"id", oatpp::Int32(id)}
+            }
         );
 
         if (result->isSuccess() && result->hasMoreToFetch()) {
@@ -231,8 +234,10 @@ namespace media::database {
     std::vector<MediaItem> Database::getAllMedia(ContentType type) {
         std::vector<MediaItem> items;
         auto result = m_impl->executor->execute(
-            "SELECT * FROM media_items WHERE type = ? ORDER BY created_at DESC",
-            {contentTypeToString(type)}
+            "SELECT * FROM media_items WHERE type = :type ORDER BY created_at DESC",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"type", oatpp::String(contentTypeToString(type))}
+            }
         );
 
         if (result->isSuccess()) {
@@ -264,8 +269,11 @@ namespace media::database {
     std::vector<MediaItem> Database::searchMedia(const std::string& query, ContentType type) {
         std::vector<MediaItem> items;
         auto result = m_impl->executor->execute(
-            "SELECT * FROM media_items WHERE type = ? AND (title LIKE ? OR original_title LIKE ?) ORDER BY rating DESC",
-            {contentTypeToString(type), "%" + query + "%", "%" + query + "%"}
+            "SELECT * FROM media_items WHERE type = :type AND (title LIKE :query OR original_title LIKE :query) ORDER BY rating DESC",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"type", oatpp::String(contentTypeToString(type))},
+                {"query", oatpp::String("%" + query + "%")}
+            }
         );
 
         if (result->isSuccess()) {
@@ -298,30 +306,30 @@ namespace media::database {
         auto now = std::chrono::system_clock::now().time_since_epoch().count();
         
         m_impl->executor->execute(
-            "UPDATE media_items SET title = ?, original_title = ?, year = ?, description = ?, "
-            "poster_url = ?, backdrop_url = ?, rating = ?, genres = ?, runtime_minutes = ?, "
-            "tmdb_id = ?, imdb_id = ?, language = ?, updated_at = ? WHERE id = ?",
-            {
-                item.title,
-                item.original_title,
-                std::to_string(item.year),
-                item.description,
-                item.poster_url,
-                item.backdrop_url,
-                std::to_string(item.rating),
-                item.genres,
-                std::to_string(item.runtime_minutes),
-                item.tmdb_id,
-                item.imdb_id,
-                item.language,
-                std::to_string(now),
-                std::to_string(item.id)
+            "UPDATE media_items SET title = :title, original_title = :original_title, year = :year, description = :description, "
+            "poster_url = :poster_url, backdrop_url = :backdrop_url, rating = :rating, genres = :genres, runtime_minutes = :runtime_minutes, "
+            "tmdb_id = :tmdb_id, imdb_id = :imdb_id, language = :language, updated_at = :updated_at WHERE id = :id",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"title", oatpp::String(item.title)},
+                {"original_title", oatpp::String(item.original_title)},
+                {"year", oatpp::Int32(item.year)},
+                {"description", oatpp::String(item.description)},
+                {"poster_url", oatpp::String(item.poster_url)},
+                {"backdrop_url", oatpp::String(item.backdrop_url)},
+                {"rating", oatpp::Float32(item.rating)},
+                {"genres", oatpp::String(item.genres)},
+                {"runtime_minutes", oatpp::Int32(item.runtime_minutes)},
+                {"tmdb_id", oatpp::String(item.tmdb_id)},
+                {"imdb_id", oatpp::String(item.imdb_id)},
+                {"language", oatpp::String(item.language)},
+                {"updated_at", oatpp::Int64(now)},
+                {"id", oatpp::Int32(item.id)}
             }
         );
     }
 
     void Database::deleteMediaItem(int id) {
-        m_impl->executor->execute("DELETE FROM media_items WHERE id = ?", {std::to_string(id)});
+        m_impl->executor->execute("DELETE FROM media_items WHERE id = :id", std::unordered_map<oatpp::String, oatpp::Void>{{"id", oatpp::Int32(id)}});
     }
 
     // Torrents
@@ -331,21 +339,22 @@ namespace media::database {
         auto result = m_impl->executor->execute(
             "INSERT INTO torrents (media_id, info_hash, magnet_uri, quality, size_bytes, seeders, "
             "leechers, source, status, progress, file_path, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            {
-                std::to_string(torrent.media_id),
-                torrent.info_hash,
-                torrent.magnet_uri,
-                torrent.quality,
-                std::to_string(torrent.size_bytes),
-                std::to_string(torrent.seeders),
-                std::to_string(torrent.leechers),
-                torrent.source,
-                downloadStatusToString(torrent.status),
-                std::to_string(torrent.progress),
-                torrent.file_path,
-                std::to_string(now),
-                std::to_string(now)
+            "VALUES (:media_id, :info_hash, :magnet_uri, :quality, :size_bytes, :seeders, "
+            ":leechers, :source, :status, :progress, :file_path, :created_at, :updated_at)",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"media_id", oatpp::Int32(torrent.media_id)},
+                {"info_hash", oatpp::String(torrent.info_hash)},
+                {"magnet_uri", oatpp::String(torrent.magnet_uri)},
+                {"quality", oatpp::String(torrent.quality)},
+                {"size_bytes", oatpp::Int64(torrent.size_bytes)},
+                {"seeders", oatpp::Int32(torrent.seeders)},
+                {"leechers", oatpp::Int32(torrent.leechers)},
+                {"source", oatpp::String(torrent.source)},
+                {"status", oatpp::String(downloadStatusToString(torrent.status))},
+                {"progress", oatpp::Float32(torrent.progress)},
+                {"file_path", oatpp::String(torrent.file_path)},
+                {"created_at", oatpp::Int64(now)},
+                {"updated_at", oatpp::Int64(now)}
             }
         );
 
@@ -357,8 +366,10 @@ namespace media::database {
 
     std::optional<TorrentInfo> Database::getTorrent(int id) {
         auto result = m_impl->executor->execute(
-            "SELECT * FROM torrents WHERE id = ?",
-            {std::to_string(id)}
+            "SELECT * FROM torrents WHERE id = :id",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"id", oatpp::Int32(id)}
+            }
         );
 
         if (result->isSuccess() && result->hasMoreToFetch()) {
@@ -385,8 +396,10 @@ namespace media::database {
 
     std::optional<TorrentInfo> Database::getTorrentByHash(const std::string& info_hash) {
         auto result = m_impl->executor->execute(
-            "SELECT * FROM torrents WHERE info_hash = ?",
-            {info_hash}
+            "SELECT * FROM torrents WHERE info_hash = :info_hash",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"info_hash", oatpp::String(info_hash)}
+            }
         );
 
         if (result->isSuccess() && result->hasMoreToFetch()) {
@@ -414,8 +427,10 @@ namespace media::database {
     std::vector<TorrentInfo> Database::getTorrentsForMedia(int media_id) {
         std::vector<TorrentInfo> torrents;
         auto result = m_impl->executor->execute(
-            "SELECT * FROM torrents WHERE media_id = ? ORDER BY seeders DESC",
-            {std::to_string(media_id)}
+            "SELECT * FROM torrents WHERE media_id = :media_id ORDER BY seeders DESC",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"media_id", oatpp::Int32(media_id)}
+            }
         );
 
         if (result->isSuccess()) {
@@ -446,7 +461,7 @@ namespace media::database {
         std::vector<TorrentInfo> torrents;
         auto result = m_impl->executor->execute(
             "SELECT * FROM torrents WHERE status IN ('DOWNLOADING', 'SEEDING') ORDER BY updated_at DESC",
-            {}
+            std::unordered_map<oatpp::String, oatpp::Void>{}
         );
 
         if (result->isSuccess()) {
@@ -477,12 +492,12 @@ namespace media::database {
         auto now = std::chrono::system_clock::now().time_since_epoch().count();
         
         m_impl->executor->execute(
-            "UPDATE torrents SET status = ?, progress = ?, updated_at = ? WHERE id = ?",
-            {
-                downloadStatusToString(status),
-                std::to_string(progress),
-                std::to_string(now),
-                std::to_string(id)
+            "UPDATE torrents SET status = :status, progress = :progress, updated_at = :updated_at WHERE id = :id",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"status", oatpp::String(downloadStatusToString(status))},
+                {"progress", oatpp::Float32(progress)},
+                {"updated_at", oatpp::Int64(now)},
+                {"id", oatpp::Int32(id)}
             }
         );
     }
@@ -491,13 +506,17 @@ namespace media::database {
         auto now = std::chrono::system_clock::now().time_since_epoch().count();
         
         m_impl->executor->execute(
-            "UPDATE torrents SET file_path = ?, updated_at = ? WHERE id = ?",
-            {file_path, std::to_string(now), std::to_string(id)}
+            "UPDATE torrents SET file_path = :file_path, updated_at = :updated_at WHERE id = :id",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"file_path", oatpp::String(file_path)},
+                {"updated_at", oatpp::Int64(now)},
+                {"id", oatpp::Int32(id)}
+            }
         );
     }
 
     void Database::deleteTorrent(int id) {
-        m_impl->executor->execute("DELETE FROM torrents WHERE id = ?", {std::to_string(id)});
+        m_impl->executor->execute("DELETE FROM torrents WHERE id = :id", std::unordered_map<oatpp::String, oatpp::Void>{{"id", oatpp::Int32(id)}});
     }
 
     // Watch History
@@ -506,28 +525,30 @@ namespace media::database {
         
         m_impl->executor->execute(
             "INSERT INTO watch_history (media_id, position_seconds, duration_seconds, progress_percent, "
-            "last_watched, completed) VALUES (?, ?, ?, ?, ?, ?) "
+            "last_watched, completed) VALUES (:media_id, :position_seconds, :duration_seconds, :progress_percent, :last_watched, :completed) "
             "ON CONFLICT(media_id) DO UPDATE SET "
             "position_seconds = excluded.position_seconds, "
             "duration_seconds = excluded.duration_seconds, "
             "progress_percent = excluded.progress_percent, "
             "last_watched = excluded.last_watched, "
             "completed = excluded.completed",
-            {
-                std::to_string(history.media_id),
-                std::to_string(history.position_seconds),
-                std::to_string(history.duration_seconds),
-                std::to_string(history.progress_percent),
-                std::to_string(now),
-                history.completed ? "1" : "0"
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"media_id", oatpp::Int32(history.media_id)},
+                {"position_seconds", oatpp::Int64(history.position_seconds)},
+                {"duration_seconds", oatpp::Int64(history.duration_seconds)},
+                {"progress_percent", oatpp::Float32(history.progress_percent)},
+                {"last_watched", oatpp::Int64(now)},
+                {"completed", oatpp::Int32(history.completed ? 1 : 0)}
             }
         );
     }
 
     std::optional<WatchHistory> Database::getWatchHistory(int media_id) {
         auto result = m_impl->executor->execute(
-            "SELECT * FROM watch_history WHERE media_id = ?",
-            {std::to_string(media_id)}
+            "SELECT * FROM watch_history WHERE media_id = :media_id",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"media_id", oatpp::Int32(media_id)}
+            }
         );
 
         if (result->isSuccess() && result->hasMoreToFetch()) {
@@ -548,8 +569,10 @@ namespace media::database {
     std::vector<WatchHistory> Database::getRecentlyWatched(int limit) {
         std::vector<WatchHistory> histories;
         auto result = m_impl->executor->execute(
-            "SELECT * FROM watch_history ORDER BY last_watched DESC LIMIT ?",
-            {std::to_string(limit)}
+            "SELECT * FROM watch_history ORDER BY last_watched DESC LIMIT :limit",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"limit", oatpp::Int32(limit)}
+            }
         );
 
         if (result->isSuccess()) {
@@ -570,7 +593,7 @@ namespace media::database {
     }
 
     void Database::deleteWatchHistory(int media_id) {
-        m_impl->executor->execute("DELETE FROM watch_history WHERE media_id = ?", {std::to_string(media_id)});
+        m_impl->executor->execute("DELETE FROM watch_history WHERE media_id = :media_id", std::unordered_map<oatpp::String, oatpp::Void>{{"media_id", oatpp::Int32(media_id)}});
     }
 
     // Episodes
@@ -580,17 +603,18 @@ namespace media::database {
         auto result = m_impl->executor->execute(
             "INSERT INTO episodes (media_id, season_number, episode_number, title, description, "
             "still_url, runtime_minutes, air_date, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            {
-                std::to_string(episode.media_id),
-                std::to_string(episode.season_number),
-                std::to_string(episode.episode_number),
-                episode.title,
-                episode.description,
-                episode.still_url,
-                std::to_string(episode.runtime_minutes),
-                episode.air_date,
-                std::to_string(now)
+            "VALUES (:media_id, :season_number, :episode_number, :title, :description, "
+            ":still_url, :runtime_minutes, :air_date, :created_at)",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"media_id", oatpp::Int32(episode.media_id)},
+                {"season_number", oatpp::Int32(episode.season_number)},
+                {"episode_number", oatpp::Int32(episode.episode_number)},
+                {"title", oatpp::String(episode.title)},
+                {"description", oatpp::String(episode.description)},
+                {"still_url", oatpp::String(episode.still_url)},
+                {"runtime_minutes", oatpp::Int32(episode.runtime_minutes)},
+                {"air_date", oatpp::String(episode.air_date)},
+                {"created_at", oatpp::Int64(now)}
             }
         );
 
@@ -602,8 +626,10 @@ namespace media::database {
 
     std::optional<Episode> Database::getEpisode(int id) {
         auto result = m_impl->executor->execute(
-            "SELECT * FROM episodes WHERE id = ?",
-            {std::to_string(id)}
+            "SELECT * FROM episodes WHERE id = :id",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"id", oatpp::Int32(id)}
+            }
         );
 
         if (result->isSuccess() && result->hasMoreToFetch()) {
@@ -627,8 +653,11 @@ namespace media::database {
     std::vector<Episode> Database::getEpisodesForSeries(int media_id, int season_number) {
         std::vector<Episode> episodes;
         auto result = m_impl->executor->execute(
-            "SELECT * FROM episodes WHERE media_id = ? AND season_number = ? ORDER BY episode_number ASC",
-            {std::to_string(media_id), std::to_string(season_number)}
+            "SELECT * FROM episodes WHERE media_id = :media_id AND season_number = :season_number ORDER BY episode_number ASC",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"media_id", oatpp::Int32(media_id)},
+                {"season_number", oatpp::Int32(season_number)}
+            }
         );
 
         if (result->isSuccess()) {
@@ -653,28 +682,30 @@ namespace media::database {
 
     void Database::updateEpisode(const Episode& episode) {
         m_impl->executor->execute(
-            "UPDATE episodes SET title = ?, description = ?, still_url = ?, "
-            "runtime_minutes = ?, air_date = ? WHERE id = ?",
-            {
-                episode.title,
-                episode.description,
-                episode.still_url,
-                std::to_string(episode.runtime_minutes),
-                episode.air_date,
-                std::to_string(episode.id)
+            "UPDATE episodes SET title = :title, description = :description, still_url = :still_url, "
+            "runtime_minutes = :runtime_minutes, air_date = :air_date WHERE id = :id",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"title", oatpp::String(episode.title)},
+                {"description", oatpp::String(episode.description)},
+                {"still_url", oatpp::String(episode.still_url)},
+                {"runtime_minutes", oatpp::Int32(episode.runtime_minutes)},
+                {"air_date", oatpp::String(episode.air_date)},
+                {"id", oatpp::Int32(episode.id)}
             }
         );
     }
 
     void Database::deleteEpisode(int id) {
-        m_impl->executor->execute("DELETE FROM episodes WHERE id = ?", {std::to_string(id)});
+        m_impl->executor->execute("DELETE FROM episodes WHERE id = :id", std::unordered_map<oatpp::String, oatpp::Void>{{"id", oatpp::Int32(id)}});
     }
 
     // Statistics
     int Database::getMediaCount(ContentType type) {
         auto result = m_impl->executor->execute(
-            "SELECT COUNT(*) FROM media_items WHERE type = ?",
-            {contentTypeToString(type)}
+            "SELECT COUNT(*) FROM media_items WHERE type = :type",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"type", oatpp::String(contentTypeToString(type))}
+            }
         );
 
         if (result->isSuccess() && result->hasMoreToFetch()) {
@@ -687,7 +718,7 @@ namespace media::database {
     int64_t Database::getTotalDownloadedSize() {
         auto result = m_impl->executor->execute(
             "SELECT SUM(size_bytes) FROM torrents WHERE status = 'COMPLETED'",
-            {}
+            std::unordered_map<oatpp::String, oatpp::Void>{}
         );
 
         if (result->isSuccess() && result->hasMoreToFetch()) {
@@ -700,8 +731,11 @@ namespace media::database {
     std::vector<MediaItem> Database::getPopularMedia(ContentType type, int limit) {
         std::vector<MediaItem> items;
         auto result = m_impl->executor->execute(
-            "SELECT * FROM media_items WHERE type = ? ORDER BY rating DESC LIMIT ?",
-            {contentTypeToString(type), std::to_string(limit)}
+            "SELECT * FROM media_items WHERE type = :type ORDER BY rating DESC LIMIT :limit",
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"type", oatpp::String(contentTypeToString(type))},
+                {"limit", oatpp::Int32(limit)}
+            }
         );
 
         if (result->isSuccess()) {
