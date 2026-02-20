@@ -25,6 +25,7 @@ find_package(oatpp-swagger REQUIRED)
 find_package(oatpp-sqlite REQUIRED)
 find_package(CURL REQUIRED)
 find_package(nlohmann_json REQUIRED)
+find_package(SQLite3 REQUIRED)
 
 # --- 3. Structure Definition ---
 # Add the 'include' directory to the global search path
@@ -53,6 +54,7 @@ target_link_libraries(MediaCore PUBLIC
     nlohmann_json::nlohmann_json
     oatpp::oatpp
     oatpp::oatpp-sqlite
+    SQLite::SQLite3
 )
 
 # Define the Executable (The "Runner")
