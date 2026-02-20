@@ -5,6 +5,15 @@
 
 namespace media::database {
 
+#include OATPP_CODEGEN_BEGIN(DbClient)
+class AppDbClient : public oatpp::orm::DbClient {
+public:
+    AppDbClient(const std::shared_ptr<oatpp::sqlite::Executor>& executor)
+        : oatpp::orm::DbClient(executor) {}
+};
+#include OATPP_CODEGEN_END(DbClient)
+
+
     // Helper: Convert enum to string
     std::string contentTypeToString(ContentType type) {
         switch(type) {
@@ -46,15 +55,17 @@ namespace media::database {
     class Database::Impl {
     public:
         std::shared_ptr<oatpp::sqlite::Executor> executor;
+        std::shared_ptr<AppDbClient> client;
         
         explicit Impl(const std::filesystem::path& db_path) {
             auto connectionProvider = std::make_shared<oatpp::sqlite::ConnectionProvider>(db_path.string());
             executor = std::make_shared<oatpp::sqlite::Executor>(connectionProvider);
+            client = std::make_shared<AppDbClient>(executor);
             spdlog::info("Database initialized at: {}", db_path.string());
         }
 
         void executeSQL(const std::string& sql) {
-            auto result = executor->execute(oatpp::String(sql.c_str()), std::unordered_map<oatpp::String, oatpp::Void>{}, nullptr, nullptr);
+            auto result = client->executeQuery(oatpp::String(sql), std::unordered_map<oatpp::String, oatpp::Void>{});
             if (!result->isSuccess()) {
                 throw std::runtime_error("SQL execution failed: " + sql);
             }
@@ -193,7 +204,7 @@ namespace media::database {
         );
 
         if (result->isSuccess()) {
-            auto idResult = m_impl->executor->execute("SELECT last_insert_rowid()", std::unordered_map<oatpp::String, oatpp::Void>{}, nullptr, nullptr);
+            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT last_insert_rowid()"), std::unordered_map<oatpp::String, oatpp::Void>{});
             if (idResult->isSuccess() && idResult->hasMoreToFetch()) {
                 return static_cast<int>(idResult->fetch()->getInt64(0));
             }
@@ -327,7 +338,7 @@ namespace media::database {
     }
 
     void Database::deleteMediaItem(int id) {
-        m_impl->executor->execute("DELETE FROM media_items WHERE id = :id", std::unordered_map<oatpp::String, oatpp::Void>{{"id", oatpp::Int32(id)}}, nullptr, nullptr);
+        m_impl->client->executeQuery(oatpp::String("DELETE FROM media_items WHERE id = :id"), std::unordered_map<oatpp::String, oatpp::Void>{{"id", oatpp::Int32(id)}});
     }
 
     // Torrents
@@ -356,7 +367,7 @@ namespace media::database {
         );
 
         if (result->isSuccess()) {
-            auto idResult = m_impl->executor->execute("SELECT last_insert_rowid()", std::unordered_map<oatpp::String, oatpp::Void>{}, nullptr, nullptr);
+            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT last_insert_rowid()"), std::unordered_map<oatpp::String, oatpp::Void>{});
             if (idResult->isSuccess() && idResult->hasMoreToFetch()) {
                 return static_cast<int>(idResult->fetch()->getInt64(0));
             }
@@ -456,9 +467,7 @@ namespace media::database {
 
     std::vector<TorrentInfo> Database::getActiveTorrents() {
         std::vector<TorrentInfo> torrents;
-        auto result = m_impl->executor->execute("SELECT * FROM torrents WHERE status IN ('DOWNLOADING', 'SEEDING') ORDER BY updated_at DESC",
-            std::unordered_map<oatpp::String, oatpp::Void>{}, nullptr, nullptr
-        );
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM torrents WHERE status IN ('DOWNLOADING', 'SEEDING') ORDER BY updated_at DESC"), std::unordered_map<oatpp::String, oatpp::Void>{});
 
         if (result->isSuccess()) {
             while (result->hasMoreToFetch()) {
@@ -510,7 +519,7 @@ namespace media::database {
     }
 
     void Database::deleteTorrent(int id) {
-        m_impl->executor->execute("DELETE FROM torrents WHERE id = :id", std::unordered_map<oatpp::String, oatpp::Void>{{"id", oatpp::Int32(id)}}, nullptr, nullptr);
+        m_impl->client->executeQuery(oatpp::String("DELETE FROM torrents WHERE id = :id"), std::unordered_map<oatpp::String, oatpp::Void>{{"id", oatpp::Int32(id)}});
     }
 
     // Watch History
@@ -584,7 +593,7 @@ namespace media::database {
     }
 
     void Database::deleteWatchHistory(int media_id) {
-        m_impl->executor->execute("DELETE FROM watch_history WHERE media_id = :media_id", std::unordered_map<oatpp::String, oatpp::Void>{{"media_id", oatpp::Int32(media_id)}}, nullptr, nullptr);
+        m_impl->client->executeQuery(oatpp::String("DELETE FROM watch_history WHERE media_id = :media_id"), std::unordered_map<oatpp::String, oatpp::Void>{{"media_id", oatpp::Int32(media_id)}});
     }
 
     // Episodes
@@ -609,7 +618,7 @@ namespace media::database {
         );
 
         if (result->isSuccess()) {
-            auto idResult = m_impl->executor->execute("SELECT last_insert_rowid()", std::unordered_map<oatpp::String, oatpp::Void>{}, nullptr, nullptr);
+            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT last_insert_rowid()"), std::unordered_map<oatpp::String, oatpp::Void>{});
             if (idResult->isSuccess() && idResult->hasMoreToFetch()) {
                 return static_cast<int>(idResult->fetch()->getInt64(0));
             }
@@ -686,7 +695,7 @@ namespace media::database {
     }
 
     void Database::deleteEpisode(int id) {
-        m_impl->executor->execute("DELETE FROM episodes WHERE id = :id", std::unordered_map<oatpp::String, oatpp::Void>{{"id", oatpp::Int32(id)}}, nullptr, nullptr);
+        m_impl->client->executeQuery(oatpp::String("DELETE FROM episodes WHERE id = :id"), std::unordered_map<oatpp::String, oatpp::Void>{{"id", oatpp::Int32(id)}});
     }
 
     // Statistics
@@ -705,9 +714,7 @@ namespace media::database {
     }
 
     int64_t Database::getTotalDownloadedSize() {
-        auto result = m_impl->executor->execute("SELECT SUM(size_bytes) FROM torrents WHERE status = 'COMPLETED'",
-            std::unordered_map<oatpp::String, oatpp::Void>{}, nullptr, nullptr
-        );
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT SUM(size_bytes) FROM torrents WHERE status = 'COMPLETED'"), std::unordered_map<oatpp::String, oatpp::Void>{});
 
         if (result->isSuccess() && result->hasMoreToFetch()) {
             auto row = result->fetch();
