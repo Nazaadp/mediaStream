@@ -50,8 +50,8 @@ public:
         uint64_t start = 0;
         uint64_t end = file_size - 1;
 
-        if (range && !range->std_str().empty()) {
-            std::string r = range->std_str();
+        if (range && !range->c_str().empty()) {
+            std::string r = range->c_str();
             auto eq_idx = r.find('=');
             if (eq_idx != std::string::npos) {
                 std::string bytes_range = r.substr(eq_idx + 1);
@@ -105,7 +105,7 @@ public:
         
         // Adjust end based on actual read bytes
         end = start + chunk_size - 1;
-        buffer = oatpp::String((const char*)buffer->data(), chunk_size, true); 
+        buffer = oatpp::String((const char*)buffer->data(), chunk_size); 
 
         auto response = createResponse(Status::CODE_206, buffer);
         response->putHeader("Content-Range", "bytes " + std::to_string(start) + "-" + std::to_string(end) + "/" + std::to_string(file_size));
