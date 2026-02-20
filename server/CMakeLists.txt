@@ -51,6 +51,8 @@ target_link_libraries(MediaCore PUBLIC
     fmt::fmt
     CURL::libcurl
     nlohmann_json::nlohmann_json
+    oatpp::oatpp
+    oatpp::oatpp-sqlite
 )
 
 # Define the Executable (The "Runner")
