@@ -32,6 +32,12 @@ if ! command -v cmake &> /dev/null; then
     exit 1
 fi
 
+if ! command -v make &> /dev/null || ! command -v g++ &> /dev/null; then
+    echo -e "${RED}ERROR: Build tools not found (make, g++)${NC}"
+    echo "Install: sudo apt update && sudo apt install build-essential"
+    exit 1
+fi
+
 if ! command -v conan &> /dev/null; then
     echo -e "${YELLOW}WARNING: conan not found${NC}"
     echo "Installing conan..."
