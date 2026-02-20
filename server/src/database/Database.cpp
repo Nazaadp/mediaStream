@@ -6,6 +6,84 @@
 namespace media::database {
 
 #include OATPP_CODEGEN_BEGIN(DbClient)
+
+#include OATPP_CODEGEN_BEGIN(DTO)
+
+class MediaItemDto : public oatpp::DTO {
+    DTO_INIT(MediaItemDto, DTO)
+    DTO_FIELD(Int32, id);
+    DTO_FIELD(String, type);
+    DTO_FIELD(String, title);
+    DTO_FIELD(String, original_title);
+    DTO_FIELD(Int32, year);
+    DTO_FIELD(String, description);
+    DTO_FIELD(String, poster_url);
+    DTO_FIELD(String, backdrop_url);
+    DTO_FIELD(Float32, rating);
+    DTO_FIELD(String, genres);
+    DTO_FIELD(Int32, runtime_minutes);
+    DTO_FIELD(String, tmdb_id);
+    DTO_FIELD(String, imdb_id);
+    DTO_FIELD(String, language);
+    DTO_FIELD(Int64, created_at);
+    DTO_FIELD(Int64, updated_at);
+};
+
+class TorrentInfoDto : public oatpp::DTO {
+    DTO_INIT(TorrentInfoDto, DTO)
+    DTO_FIELD(Int32, id);
+    DTO_FIELD(Int32, media_id);
+    DTO_FIELD(String, info_hash);
+    DTO_FIELD(String, magnet_uri);
+    DTO_FIELD(String, quality);
+    DTO_FIELD(Int64, size_bytes);
+    DTO_FIELD(Int32, seeders);
+    DTO_FIELD(Int32, leechers);
+    DTO_FIELD(String, source);
+    DTO_FIELD(String, status);
+    DTO_FIELD(Float32, progress);
+    DTO_FIELD(String, file_path);
+    DTO_FIELD(Int64, created_at);
+    DTO_FIELD(Int64, updated_at);
+};
+
+class WatchHistoryDto : public oatpp::DTO {
+    DTO_INIT(WatchHistoryDto, DTO)
+    DTO_FIELD(Int32, id);
+    DTO_FIELD(Int32, media_id);
+    DTO_FIELD(Int64, position_seconds);
+    DTO_FIELD(Int64, duration_seconds);
+    DTO_FIELD(Float32, progress_percent);
+    DTO_FIELD(Int64, last_watched);
+    DTO_FIELD(Int32, completed);
+};
+
+class EpisodeDto : public oatpp::DTO {
+    DTO_INIT(EpisodeDto, DTO)
+    DTO_FIELD(Int32, id);
+    DTO_FIELD(Int32, media_id);
+    DTO_FIELD(Int32, season_number);
+    DTO_FIELD(Int32, episode_number);
+    DTO_FIELD(String, title);
+    DTO_FIELD(String, description);
+    DTO_FIELD(String, still_url);
+    DTO_FIELD(Int32, runtime_minutes);
+    DTO_FIELD(String, air_date);
+    DTO_FIELD(Int64, created_at);
+};
+
+class IntResultDto : public oatpp::DTO {
+    DTO_INIT(IntResultDto, DTO)
+    DTO_FIELD(Int32, value);
+};
+
+class Int64ResultDto : public oatpp::DTO {
+    DTO_INIT(Int64ResultDto, DTO)
+    DTO_FIELD(Int64, value);
+};
+
+#include OATPP_CODEGEN_END(DTO)
+
 class AppDbClient : public oatpp::orm::DbClient {
 public:
     AppDbClient(const std::shared_ptr<oatpp::sqlite::Executor>& executor)
@@ -180,11 +258,10 @@ public:
     int Database::insertMediaItem(const MediaItem& item) {
         auto now = std::chrono::system_clock::now().time_since_epoch().count();
         
-        auto result = m_impl->executor->execute("INSERT INTO media_items (type, title, original_title, year, description, poster_url, "
+        auto result = m_impl->client->executeQuery(oatpp::String("INSERT INTO media_items (type, title, original_title, year, description, poster_url, "
             "backdrop_url, rating, genres, runtime_minutes, tmdb_id, imdb_id, language, created_at, updated_at) "
             "VALUES (:type, :title, :original_title, :year, :description, :poster_url, "
-            ":backdrop_url, :rating, :genres, :runtime_minutes, :tmdb_id, :imdb_id, :language, :created_at, :updated_at)",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+            ":backdrop_url, :rating, :genres, :runtime_minutes, :tmdb_id, :imdb_id, :language, :created_at, :updated_at)"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"type", oatpp::String(contentTypeToString(item.type))},
                 {"title", oatpp::String(item.title)},
                 {"original_title", oatpp::String(item.original_title)},
@@ -200,78 +277,81 @@ public:
                 {"language", oatpp::String(item.language)},
                 {"created_at", oatpp::Int64(now)},
                 {"updated_at", oatpp::Int64(now)}
-            }, nullptr, nullptr
-        );
+            });
 
         if (result->isSuccess()) {
-            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT last_insert_rowid()"), std::unordered_map<oatpp::String, oatpp::Void>{});
-            if (idResult->isSuccess() && idResult->hasMoreToFetch()) {
-                return static_cast<int>(idResult->fetch()->getInt64(0));
+            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT last_insert_rowid() AS value"), std::unordered_map<oatpp::String, oatpp::Void>{});
+            if (idResult->isSuccess()) {
+                auto dataset = idResult->fetch<oatpp::Vector<oatpp::Object<Int64ResultDto>>>();
+                if (dataset && dataset->size() > 0) {
+                    return static_cast<int>(dataset->front()->value ? *dataset->front()->value : 0);
+                }
             }
         }
         throw std::runtime_error("Failed to insert media item");
     }
 
     std::optional<MediaItem> Database::getMediaItem(int id) {
-        auto result = m_impl->executor->execute("SELECT * FROM media_items WHERE id = :id",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM media_items WHERE id = :id"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"id", oatpp::Int32(id)}
-            }, nullptr, nullptr
-        );
+            });
 
-        if (result->isSuccess() && result->hasMoreToFetch()) {
-            auto row = result->fetch();
-            MediaItem item;
-            item.id = row->getInt32(0);
-            item.type = stringToContentType(row->getString(1));
-            item.title = row->getString(2);
-            item.original_title = row->getString(3);
-            item.year = row->getInt32(4);
-            item.description = row->getString(5);
-            item.poster_url = row->getString(6);
-            item.backdrop_url = row->getString(7);
-            item.rating = row->getFloat32(8);
-            item.genres = row->getString(9);
-            item.runtime_minutes = row->getInt32(10);
-            item.tmdb_id = row->getString(11);
-            item.imdb_id = row->getString(12);
-            item.language = row->getString(13);
-            item.created_at = row->getInt64(14);
-            item.updated_at = row->getInt64(15);
-            return item;
+        if (result->isSuccess()) {
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<MediaItemDto>>>();
+            if (dataset && dataset->size() > 0) {
+                auto row = dataset->front();
+                MediaItem item;
+                item.id = row->id ? *row->id : 0;
+                item.type = stringToContentType(row->type ? row->type->std_str() : "");
+                item.title = row->title ? row->title->std_str() : "";
+                item.original_title = row->original_title ? row->original_title->std_str() : "";
+                item.year = row->year ? *row->year : 0;
+                item.description = row->description ? row->description->std_str() : "";
+                item.poster_url = row->poster_url ? row->poster_url->std_str() : "";
+                item.backdrop_url = row->backdrop_url ? row->backdrop_url->std_str() : "";
+                item.rating = row->rating ? *row->rating : 0.0f;
+                item.genres = row->genres ? row->genres->std_str() : "";
+                item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
+                item.tmdb_id = row->tmdb_id ? row->tmdb_id->std_str() : "";
+                item.imdb_id = row->imdb_id ? row->imdb_id->std_str() : "";
+                item.language = row->language ? row->language->std_str() : "";
+                item.created_at = row->created_at ? *row->created_at : 0;
+                item.updated_at = row->updated_at ? *row->updated_at : 0;
+                return item;
+            }
         }
         return std::nullopt;
     }
 
     std::vector<MediaItem> Database::getAllMedia(ContentType type) {
         std::vector<MediaItem> items;
-        auto result = m_impl->executor->execute("SELECT * FROM media_items WHERE type = :type ORDER BY created_at DESC",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM media_items WHERE type = :type ORDER BY created_at DESC"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"type", oatpp::String(contentTypeToString(type))}
-            }, nullptr, nullptr
-        );
+            });
 
         if (result->isSuccess()) {
-            while (result->hasMoreToFetch()) {
-                auto row = result->fetch();
-                MediaItem item;
-                item.id = row->getInt32(0);
-                item.type = stringToContentType(row->getString(1));
-                item.title = row->getString(2);
-                item.original_title = row->getString(3);
-                item.year = row->getInt32(4);
-                item.description = row->getString(5);
-                item.poster_url = row->getString(6);
-                item.backdrop_url = row->getString(7);
-                item.rating = row->getFloat32(8);
-                item.genres = row->getString(9);
-                item.runtime_minutes = row->getInt32(10);
-                item.tmdb_id = row->getString(11);
-                item.imdb_id = row->getString(12);
-                item.language = row->getString(13);
-                item.created_at = row->getInt64(14);
-                item.updated_at = row->getInt64(15);
-                items.push_back(item);
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<MediaItemDto>>>();
+            if (dataset) {
+                for (auto& row : *dataset) {
+                    MediaItem item;
+                    item.id = row->id ? *row->id : 0;
+                    item.type = stringToContentType(row->type ? row->type->std_str() : "");
+                    item.title = row->title ? row->title->std_str() : "";
+                    item.original_title = row->original_title ? row->original_title->std_str() : "";
+                    item.year = row->year ? *row->year : 0;
+                    item.description = row->description ? row->description->std_str() : "";
+                    item.poster_url = row->poster_url ? row->poster_url->std_str() : "";
+                    item.backdrop_url = row->backdrop_url ? row->backdrop_url->std_str() : "";
+                    item.rating = row->rating ? *row->rating : 0.0f;
+                    item.genres = row->genres ? row->genres->std_str() : "";
+                    item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
+                    item.tmdb_id = row->tmdb_id ? row->tmdb_id->std_str() : "";
+                    item.imdb_id = row->imdb_id ? row->imdb_id->std_str() : "";
+                    item.language = row->language ? row->language->std_str() : "";
+                    item.created_at = row->created_at ? *row->created_at : 0;
+                    item.updated_at = row->updated_at ? *row->updated_at : 0;
+                    items.push_back(item);
+                }
             }
         }
         return items;
@@ -279,34 +359,34 @@ public:
 
     std::vector<MediaItem> Database::searchMedia(const std::string& query, ContentType type) {
         std::vector<MediaItem> items;
-        auto result = m_impl->executor->execute("SELECT * FROM media_items WHERE type = :type AND (title LIKE :query OR original_title LIKE :query) ORDER BY rating DESC",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM media_items WHERE type = :type AND (title LIKE :query OR original_title LIKE :query) ORDER BY rating DESC"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"type", oatpp::String(contentTypeToString(type))},
                 {"query", oatpp::String("%" + query + "%")}
-            }, nullptr, nullptr
-        );
+            });
 
         if (result->isSuccess()) {
-            while (result->hasMoreToFetch()) {
-                auto row = result->fetch();
-                MediaItem item;
-                item.id = row->getInt32(0);
-                item.type = stringToContentType(row->getString(1));
-                item.title = row->getString(2);
-                item.original_title = row->getString(3);
-                item.year = row->getInt32(4);
-                item.description = row->getString(5);
-                item.poster_url = row->getString(6);
-                item.backdrop_url = row->getString(7);
-                item.rating = row->getFloat32(8);
-                item.genres = row->getString(9);
-                item.runtime_minutes = row->getInt32(10);
-                item.tmdb_id = row->getString(11);
-                item.imdb_id = row->getString(12);
-                item.language = row->getString(13);
-                item.created_at = row->getInt64(14);
-                item.updated_at = row->getInt64(15);
-                items.push_back(item);
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<MediaItemDto>>>();
+            if (dataset) {
+                for (auto& row : *dataset) {
+                    MediaItem item;
+                    item.id = row->id ? *row->id : 0;
+                    item.type = stringToContentType(row->type ? row->type->std_str() : "");
+                    item.title = row->title ? row->title->std_str() : "";
+                    item.original_title = row->original_title ? row->original_title->std_str() : "";
+                    item.year = row->year ? *row->year : 0;
+                    item.description = row->description ? row->description->std_str() : "";
+                    item.poster_url = row->poster_url ? row->poster_url->std_str() : "";
+                    item.backdrop_url = row->backdrop_url ? row->backdrop_url->std_str() : "";
+                    item.rating = row->rating ? *row->rating : 0.0f;
+                    item.genres = row->genres ? row->genres->std_str() : "";
+                    item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
+                    item.tmdb_id = row->tmdb_id ? row->tmdb_id->std_str() : "";
+                    item.imdb_id = row->imdb_id ? row->imdb_id->std_str() : "";
+                    item.language = row->language ? row->language->std_str() : "";
+                    item.created_at = row->created_at ? *row->created_at : 0;
+                    item.updated_at = row->updated_at ? *row->updated_at : 0;
+                    items.push_back(item);
+                }
             }
         }
         return items;
@@ -315,10 +395,9 @@ public:
     void Database::updateMediaItem(const MediaItem& item) {
         auto now = std::chrono::system_clock::now().time_since_epoch().count();
         
-        m_impl->executor->execute("UPDATE media_items SET title = :title, original_title = :original_title, year = :year, description = :description, "
+        m_impl->client->executeQuery(oatpp::String("UPDATE media_items SET title = :title, original_title = :original_title, year = :year, description = :description, "
             "poster_url = :poster_url, backdrop_url = :backdrop_url, rating = :rating, genres = :genres, runtime_minutes = :runtime_minutes, "
-            "tmdb_id = :tmdb_id, imdb_id = :imdb_id, language = :language, updated_at = :updated_at WHERE id = :id",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+            "tmdb_id = :tmdb_id, imdb_id = :imdb_id, language = :language, updated_at = :updated_at WHERE id = :id"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"title", oatpp::String(item.title)},
                 {"original_title", oatpp::String(item.original_title)},
                 {"year", oatpp::Int32(item.year)},
@@ -333,8 +412,7 @@ public:
                 {"language", oatpp::String(item.language)},
                 {"updated_at", oatpp::Int64(now)},
                 {"id", oatpp::Int32(item.id)}
-            }, nullptr, nullptr
-        );
+            });
     }
 
     void Database::deleteMediaItem(int id) {
@@ -345,11 +423,10 @@ public:
     int Database::insertTorrent(const TorrentInfo& torrent) {
         auto now = std::chrono::system_clock::now().time_since_epoch().count();
         
-        auto result = m_impl->executor->execute("INSERT INTO torrents (media_id, info_hash, magnet_uri, quality, size_bytes, seeders, "
+        auto result = m_impl->client->executeQuery(oatpp::String("INSERT INTO torrents (media_id, info_hash, magnet_uri, quality, size_bytes, seeders, "
             "leechers, source, status, progress, file_path, created_at, updated_at) "
             "VALUES (:media_id, :info_hash, :magnet_uri, :quality, :size_bytes, :seeders, "
-            ":leechers, :source, :status, :progress, :file_path, :created_at, :updated_at)",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+            ":leechers, :source, :status, :progress, :file_path, :created_at, :updated_at)"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"media_id", oatpp::Int32(torrent.media_id)},
                 {"info_hash", oatpp::String(torrent.info_hash)},
                 {"magnet_uri", oatpp::String(torrent.magnet_uri)},
@@ -363,103 +440,107 @@ public:
                 {"file_path", oatpp::String(torrent.file_path)},
                 {"created_at", oatpp::Int64(now)},
                 {"updated_at", oatpp::Int64(now)}
-            }, nullptr, nullptr
-        );
+            });
 
         if (result->isSuccess()) {
-            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT last_insert_rowid()"), std::unordered_map<oatpp::String, oatpp::Void>{});
-            if (idResult->isSuccess() && idResult->hasMoreToFetch()) {
-                return static_cast<int>(idResult->fetch()->getInt64(0));
+            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT last_insert_rowid() AS value"), std::unordered_map<oatpp::String, oatpp::Void>{});
+            if (idResult->isSuccess()) {
+                auto dataset = idResult->fetch<oatpp::Vector<oatpp::Object<Int64ResultDto>>>();
+                if (dataset && dataset->size() > 0) {
+                    return static_cast<int>(dataset->front()->value ? *dataset->front()->value : 0);
+                }
             }
         }
         throw std::runtime_error("Failed to insert torrent");
     }
 
     std::optional<TorrentInfo> Database::getTorrent(int id) {
-        auto result = m_impl->executor->execute("SELECT * FROM torrents WHERE id = :id",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM torrents WHERE id = :id"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"id", oatpp::Int32(id)}
-            }, nullptr, nullptr
-        );
+            });
 
-        if (result->isSuccess() && result->hasMoreToFetch()) {
-            auto row = result->fetch();
-            TorrentInfo torrent;
-            torrent.id = row->getInt32(0);
-            torrent.media_id = row->getInt32(1);
-            torrent.info_hash = row->getString(2);
-            torrent.magnet_uri = row->getString(3);
-            torrent.quality = row->getString(4);
-            torrent.size_bytes = row->getInt64(5);
-            torrent.seeders = row->getInt32(6);
-            torrent.leechers = row->getInt32(7);
-            torrent.source = row->getString(8);
-            torrent.status = stringToDownloadStatus(row->getString(9));
-            torrent.progress = row->getFloat32(10);
-            torrent.file_path = row->getString(11);
-            torrent.created_at = row->getInt64(12);
-            torrent.updated_at = row->getInt64(13);
-            return torrent;
+        if (result->isSuccess()) {
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<TorrentInfoDto>>>();
+            if (dataset && dataset->size() > 0) {
+                auto row = dataset->front();
+                TorrentInfo torrent;
+                torrent.id = row->id ? *row->id : 0;
+                torrent.media_id = row->media_id ? *row->media_id : 0;
+                torrent.info_hash = row->info_hash ? row->info_hash->std_str() : "";
+                torrent.magnet_uri = row->magnet_uri ? row->magnet_uri->std_str() : "";
+                torrent.quality = row->quality ? row->quality->std_str() : "";
+                torrent.size_bytes = row->size_bytes ? *row->size_bytes : 0;
+                torrent.seeders = row->seeders ? *row->seeders : 0;
+                torrent.leechers = row->leechers ? *row->leechers : 0;
+                torrent.source = row->source ? row->source->std_str() : "";
+                torrent.status = stringToDownloadStatus(row->status ? row->status->std_str() : "");
+                torrent.progress = row->progress ? *row->progress : 0.0f;
+                torrent.file_path = row->file_path ? row->file_path->std_str() : "";
+                torrent.created_at = row->created_at ? *row->created_at : 0;
+                torrent.updated_at = row->updated_at ? *row->updated_at : 0;
+                return torrent;
+            }
         }
         return std::nullopt;
     }
 
     std::optional<TorrentInfo> Database::getTorrentByHash(const std::string& info_hash) {
-        auto result = m_impl->executor->execute("SELECT * FROM torrents WHERE info_hash = :info_hash",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM torrents WHERE info_hash = :info_hash"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"info_hash", oatpp::String(info_hash)}
-            }, nullptr, nullptr
-        );
+            });
 
-        if (result->isSuccess() && result->hasMoreToFetch()) {
-            auto row = result->fetch();
-            TorrentInfo torrent;
-            torrent.id = row->getInt32(0);
-            torrent.media_id = row->getInt32(1);
-            torrent.info_hash = row->getString(2);
-            torrent.magnet_uri = row->getString(3);
-            torrent.quality = row->getString(4);
-            torrent.size_bytes = row->getInt64(5);
-            torrent.seeders = row->getInt32(6);
-            torrent.leechers = row->getInt32(7);
-            torrent.source = row->getString(8);
-            torrent.status = stringToDownloadStatus(row->getString(9));
-            torrent.progress = row->getFloat32(10);
-            torrent.file_path = row->getString(11);
-            torrent.created_at = row->getInt64(12);
-            torrent.updated_at = row->getInt64(13);
-            return torrent;
+        if (result->isSuccess()) {
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<TorrentInfoDto>>>();
+            if (dataset && dataset->size() > 0) {
+                auto row = dataset->front();
+                TorrentInfo torrent;
+                torrent.id = row->id ? *row->id : 0;
+                torrent.media_id = row->media_id ? *row->media_id : 0;
+                torrent.info_hash = row->info_hash ? row->info_hash->std_str() : "";
+                torrent.magnet_uri = row->magnet_uri ? row->magnet_uri->std_str() : "";
+                torrent.quality = row->quality ? row->quality->std_str() : "";
+                torrent.size_bytes = row->size_bytes ? *row->size_bytes : 0;
+                torrent.seeders = row->seeders ? *row->seeders : 0;
+                torrent.leechers = row->leechers ? *row->leechers : 0;
+                torrent.source = row->source ? row->source->std_str() : "";
+                torrent.status = stringToDownloadStatus(row->status ? row->status->std_str() : "");
+                torrent.progress = row->progress ? *row->progress : 0.0f;
+                torrent.file_path = row->file_path ? row->file_path->std_str() : "";
+                torrent.created_at = row->created_at ? *row->created_at : 0;
+                torrent.updated_at = row->updated_at ? *row->updated_at : 0;
+                return torrent;
+            }
         }
         return std::nullopt;
     }
 
     std::vector<TorrentInfo> Database::getTorrentsForMedia(int media_id) {
         std::vector<TorrentInfo> torrents;
-        auto result = m_impl->executor->execute("SELECT * FROM torrents WHERE media_id = :media_id ORDER BY seeders DESC",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM torrents WHERE media_id = :media_id ORDER BY seeders DESC"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"media_id", oatpp::Int32(media_id)}
-            }, nullptr, nullptr
-        );
+            });
 
         if (result->isSuccess()) {
-            while (result->hasMoreToFetch()) {
-                auto row = result->fetch();
-                TorrentInfo torrent;
-                torrent.id = row->getInt32(0);
-                torrent.media_id = row->getInt32(1);
-                torrent.info_hash = row->getString(2);
-                torrent.magnet_uri = row->getString(3);
-                torrent.quality = row->getString(4);
-                torrent.size_bytes = row->getInt64(5);
-                torrent.seeders = row->getInt32(6);
-                torrent.leechers = row->getInt32(7);
-                torrent.source = row->getString(8);
-                torrent.status = stringToDownloadStatus(row->getString(9));
-                torrent.progress = row->getFloat32(10);
-                torrent.file_path = row->getString(11);
-                torrent.created_at = row->getInt64(12);
-                torrent.updated_at = row->getInt64(13);
-                torrents.push_back(torrent);
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<TorrentInfoDto>>>();
+            if (dataset) {
+                for(auto& row : *dataset) {
+                    TorrentInfo torrent;
+                    torrent.id = row->id ? *row->id : 0;
+                    torrent.media_id = row->media_id ? *row->media_id : 0;
+                    torrent.info_hash = row->info_hash ? row->info_hash->std_str() : "";
+                    torrent.magnet_uri = row->magnet_uri ? row->magnet_uri->std_str() : "";
+                    torrent.quality = row->quality ? row->quality->std_str() : "";
+                    torrent.size_bytes = row->size_bytes ? *row->size_bytes : 0;
+                    torrent.seeders = row->seeders ? *row->seeders : 0;
+                    torrent.leechers = row->leechers ? *row->leechers : 0;
+                    torrent.source = row->source ? row->source->std_str() : "";
+                    torrent.status = stringToDownloadStatus(row->status ? row->status->std_str() : "");
+                    torrent.progress = row->progress ? *row->progress : 0.0f;
+                    torrent.file_path = row->file_path ? row->file_path->std_str() : "";
+                    torrent.created_at = row->created_at ? *row->created_at : 0;
+                    torrent.updated_at = row->updated_at ? *row->updated_at : 0;
+                    torrents.push_back(torrent);
+                }
             }
         }
         return torrents;
@@ -470,24 +551,26 @@ public:
         auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM torrents WHERE status IN ('DOWNLOADING', 'SEEDING') ORDER BY updated_at DESC"), std::unordered_map<oatpp::String, oatpp::Void>{});
 
         if (result->isSuccess()) {
-            while (result->hasMoreToFetch()) {
-                auto row = result->fetch();
-                TorrentInfo torrent;
-                torrent.id = row->getInt32(0);
-                torrent.media_id = row->getInt32(1);
-                torrent.info_hash = row->getString(2);
-                torrent.magnet_uri = row->getString(3);
-                torrent.quality = row->getString(4);
-                torrent.size_bytes = row->getInt64(5);
-                torrent.seeders = row->getInt32(6);
-                torrent.leechers = row->getInt32(7);
-                torrent.source = row->getString(8);
-                torrent.status = stringToDownloadStatus(row->getString(9));
-                torrent.progress = row->getFloat32(10);
-                torrent.file_path = row->getString(11);
-                torrent.created_at = row->getInt64(12);
-                torrent.updated_at = row->getInt64(13);
-                torrents.push_back(torrent);
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<TorrentInfoDto>>>();
+            if (dataset) {
+                for(auto& row : *dataset) {
+                    TorrentInfo torrent;
+                    torrent.id = row->id ? *row->id : 0;
+                    torrent.media_id = row->media_id ? *row->media_id : 0;
+                    torrent.info_hash = row->info_hash ? row->info_hash->std_str() : "";
+                    torrent.magnet_uri = row->magnet_uri ? row->magnet_uri->std_str() : "";
+                    torrent.quality = row->quality ? row->quality->std_str() : "";
+                    torrent.size_bytes = row->size_bytes ? *row->size_bytes : 0;
+                    torrent.seeders = row->seeders ? *row->seeders : 0;
+                    torrent.leechers = row->leechers ? *row->leechers : 0;
+                    torrent.source = row->source ? row->source->std_str() : "";
+                    torrent.status = stringToDownloadStatus(row->status ? row->status->std_str() : "");
+                    torrent.progress = row->progress ? *row->progress : 0.0f;
+                    torrent.file_path = row->file_path ? row->file_path->std_str() : "";
+                    torrent.created_at = row->created_at ? *row->created_at : 0;
+                    torrent.updated_at = row->updated_at ? *row->updated_at : 0;
+                    torrents.push_back(torrent);
+                }
             }
         }
         return torrents;
@@ -496,26 +579,22 @@ public:
     void Database::updateTorrentStatus(int id, DownloadStatus status, float progress) {
         auto now = std::chrono::system_clock::now().time_since_epoch().count();
         
-        m_impl->executor->execute("UPDATE torrents SET status = :status, progress = :progress, updated_at = :updated_at WHERE id = :id",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+        m_impl->client->executeQuery(oatpp::String("UPDATE torrents SET status = :status, progress = :progress, updated_at = :updated_at WHERE id = :id"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"status", oatpp::String(downloadStatusToString(status))},
                 {"progress", oatpp::Float32(progress)},
                 {"updated_at", oatpp::Int64(now)},
                 {"id", oatpp::Int32(id)}
-            }, nullptr, nullptr
-        );
+            });
     }
 
     void Database::updateTorrentFilePath(int id, const std::string& file_path) {
         auto now = std::chrono::system_clock::now().time_since_epoch().count();
         
-        m_impl->executor->execute("UPDATE torrents SET file_path = :file_path, updated_at = :updated_at WHERE id = :id",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+        m_impl->client->executeQuery(oatpp::String("UPDATE torrents SET file_path = :file_path, updated_at = :updated_at WHERE id = :id"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"file_path", oatpp::String(file_path)},
                 {"updated_at", oatpp::Int64(now)},
                 {"id", oatpp::Int32(id)}
-            }, nullptr, nullptr
-        );
+            });
     }
 
     void Database::deleteTorrent(int id) {
@@ -526,67 +605,66 @@ public:
     void Database::upsertWatchHistory(const WatchHistory& history) {
         auto now = std::chrono::system_clock::now().time_since_epoch().count();
         
-        m_impl->executor->execute("INSERT INTO watch_history (media_id, position_seconds, duration_seconds, progress_percent, "
+        m_impl->client->executeQuery(oatpp::String("INSERT INTO watch_history (media_id, position_seconds, duration_seconds, progress_percent, "
             "last_watched, completed) VALUES (:media_id, :position_seconds, :duration_seconds, :progress_percent, :last_watched, :completed) "
             "ON CONFLICT(media_id) DO UPDATE SET "
             "position_seconds = excluded.position_seconds, "
             "duration_seconds = excluded.duration_seconds, "
             "progress_percent = excluded.progress_percent, "
             "last_watched = excluded.last_watched, "
-            "completed = excluded.completed",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+            "completed = excluded.completed"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"media_id", oatpp::Int32(history.media_id)},
                 {"position_seconds", oatpp::Int64(history.position_seconds)},
                 {"duration_seconds", oatpp::Int64(history.duration_seconds)},
                 {"progress_percent", oatpp::Float32(history.progress_percent)},
                 {"last_watched", oatpp::Int64(now)},
                 {"completed", oatpp::Int32(history.completed ? 1 : 0)}
-            }, nullptr, nullptr
-        );
+            });
     }
 
     std::optional<WatchHistory> Database::getWatchHistory(int media_id) {
-        auto result = m_impl->executor->execute("SELECT * FROM watch_history WHERE media_id = :media_id",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM watch_history WHERE media_id = :media_id"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"media_id", oatpp::Int32(media_id)}
-            }, nullptr, nullptr
-        );
+            });
 
-        if (result->isSuccess() && result->hasMoreToFetch()) {
-            auto row = result->fetch();
-            WatchHistory history;
-            history.id = row->getInt32(0);
-            history.media_id = row->getInt32(1);
-            history.position_seconds = row->getInt64(2);
-            history.duration_seconds = row->getInt64(3);
-            history.progress_percent = row->getFloat32(4);
-            history.last_watched = row->getInt64(5);
-            history.completed = row->getInt32(6) != 0;
-            return history;
+        if (result->isSuccess()) {
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<WatchHistoryDto>>>();
+            if (dataset && dataset->size() > 0) {
+                auto row = dataset->front();
+                WatchHistory history;
+                history.id = row->id ? *row->id : 0;
+                history.media_id = row->media_id ? *row->media_id : 0;
+                history.position_seconds = row->position_seconds ? *row->position_seconds : 0;
+                history.duration_seconds = row->duration_seconds ? *row->duration_seconds : 0;
+                history.progress_percent = row->progress_percent ? *row->progress_percent : 0.0f;
+                history.last_watched = row->last_watched ? *row->last_watched : 0;
+                history.completed = (row->completed ? *row->completed : 0) != 0;
+                return history;
+            }
         }
         return std::nullopt;
     }
 
     std::vector<WatchHistory> Database::getRecentlyWatched(int limit) {
         std::vector<WatchHistory> histories;
-        auto result = m_impl->executor->execute("SELECT * FROM watch_history ORDER BY last_watched DESC LIMIT :limit",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM watch_history ORDER BY last_watched DESC LIMIT :limit"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"limit", oatpp::Int32(limit)}
-            }, nullptr, nullptr
-        );
+            });
 
         if (result->isSuccess()) {
-            while (result->hasMoreToFetch()) {
-                auto row = result->fetch();
-                WatchHistory history;
-                history.id = row->getInt32(0);
-                history.media_id = row->getInt32(1);
-                history.position_seconds = row->getInt64(2);
-                history.duration_seconds = row->getInt64(3);
-                history.progress_percent = row->getFloat32(4);
-                history.last_watched = row->getInt64(5);
-                history.completed = row->getInt32(6) != 0;
-                histories.push_back(history);
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<WatchHistoryDto>>>();
+            if (dataset) {
+                for (auto& row : *dataset) {
+                    WatchHistory history;
+                    history.id = row->id ? *row->id : 0;
+                    history.media_id = row->media_id ? *row->media_id : 0;
+                    history.position_seconds = row->position_seconds ? *row->position_seconds : 0;
+                    history.duration_seconds = row->duration_seconds ? *row->duration_seconds : 0;
+                    history.progress_percent = row->progress_percent ? *row->progress_percent : 0.0f;
+                    history.last_watched = row->last_watched ? *row->last_watched : 0;
+                    history.completed = (row->completed ? *row->completed : 0) != 0;
+                    histories.push_back(history);
+                }
             }
         }
         return histories;
@@ -600,11 +678,10 @@ public:
     int Database::insertEpisode(const Episode& episode) {
         auto now = std::chrono::system_clock::now().time_since_epoch().count();
         
-        auto result = m_impl->executor->execute("INSERT INTO episodes (media_id, season_number, episode_number, title, description, "
+        auto result = m_impl->client->executeQuery(oatpp::String("INSERT INTO episodes (media_id, season_number, episode_number, title, description, "
             "still_url, runtime_minutes, air_date, created_at) "
             "VALUES (:media_id, :season_number, :episode_number, :title, :description, "
-            ":still_url, :runtime_minutes, :air_date, :created_at)",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+            ":still_url, :runtime_minutes, :air_date, :created_at)"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"media_id", oatpp::Int32(episode.media_id)},
                 {"season_number", oatpp::Int32(episode.season_number)},
                 {"episode_number", oatpp::Int32(episode.episode_number)},
@@ -614,84 +691,85 @@ public:
                 {"runtime_minutes", oatpp::Int32(episode.runtime_minutes)},
                 {"air_date", oatpp::String(episode.air_date)},
                 {"created_at", oatpp::Int64(now)}
-            }, nullptr, nullptr
-        );
+            });
 
         if (result->isSuccess()) {
-            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT last_insert_rowid()"), std::unordered_map<oatpp::String, oatpp::Void>{});
-            if (idResult->isSuccess() && idResult->hasMoreToFetch()) {
-                return static_cast<int>(idResult->fetch()->getInt64(0));
+            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT last_insert_rowid() AS value"), std::unordered_map<oatpp::String, oatpp::Void>{});
+            if (idResult->isSuccess()) {
+                auto dataset = idResult->fetch<oatpp::Vector<oatpp::Object<Int64ResultDto>>>();
+                if (dataset && dataset->size() > 0) {
+                    return static_cast<int>(dataset->front()->value ? *dataset->front()->value : 0);
+                }
             }
         }
         throw std::runtime_error("Failed to insert episode");
     }
 
     std::optional<Episode> Database::getEpisode(int id) {
-        auto result = m_impl->executor->execute("SELECT * FROM episodes WHERE id = :id",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM episodes WHERE id = :id"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"id", oatpp::Int32(id)}
-            }, nullptr, nullptr
-        );
+            });
 
-        if (result->isSuccess() && result->hasMoreToFetch()) {
-            auto row = result->fetch();
-            Episode episode;
-            episode.id = row->getInt32(0);
-            episode.media_id = row->getInt32(1);
-            episode.season_number = row->getInt32(2);
-            episode.episode_number = row->getInt32(3);
-            episode.title = row->getString(4);
-            episode.description = row->getString(5);
-            episode.still_url = row->getString(6);
-            episode.runtime_minutes = row->getInt32(7);
-            episode.air_date = row->getString(8);
-            episode.created_at = row->getInt64(9);
-            return episode;
+        if (result->isSuccess()) {
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<EpisodeDto>>>();
+            if (dataset && dataset->size() > 0) {
+                auto row = dataset->front();
+                Episode episode;
+                episode.id = row->id ? *row->id : 0;
+                episode.media_id = row->media_id ? *row->media_id : 0;
+                episode.season_number = row->season_number ? *row->season_number : 0;
+                episode.episode_number = row->episode_number ? *row->episode_number : 0;
+                episode.title = row->title ? row->title->std_str() : "";
+                episode.description = row->description ? row->description->std_str() : "";
+                episode.still_url = row->still_url ? row->still_url->std_str() : "";
+                episode.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
+                episode.air_date = row->air_date ? row->air_date->std_str() : "";
+                episode.created_at = row->created_at ? *row->created_at : 0;
+                return episode;
+            }
         }
         return std::nullopt;
     }
 
     std::vector<Episode> Database::getEpisodesForSeries(int media_id, int season_number) {
         std::vector<Episode> episodes;
-        auto result = m_impl->executor->execute("SELECT * FROM episodes WHERE media_id = :media_id AND season_number = :season_number ORDER BY episode_number ASC",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM episodes WHERE media_id = :media_id AND season_number = :season_number ORDER BY episode_number ASC"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"media_id", oatpp::Int32(media_id)},
                 {"season_number", oatpp::Int32(season_number)}
-            }, nullptr, nullptr
-        );
+            });
 
         if (result->isSuccess()) {
-            while (result->hasMoreToFetch()) {
-                auto row = result->fetch();
-                Episode episode;
-                episode.id = row->getInt32(0);
-                episode.media_id = row->getInt32(1);
-                episode.season_number = row->getInt32(2);
-                episode.episode_number = row->getInt32(3);
-                episode.title = row->getString(4);
-                episode.description = row->getString(5);
-                episode.still_url = row->getString(6);
-                episode.runtime_minutes = row->getInt32(7);
-                episode.air_date = row->getString(8);
-                episode.created_at = row->getInt64(9);
-                episodes.push_back(episode);
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<EpisodeDto>>>();
+            if (dataset) {
+                for (auto& row : *dataset) {
+                    Episode episode;
+                    episode.id = row->id ? *row->id : 0;
+                    episode.media_id = row->media_id ? *row->media_id : 0;
+                    episode.season_number = row->season_number ? *row->season_number : 0;
+                    episode.episode_number = row->episode_number ? *row->episode_number : 0;
+                    episode.title = row->title ? row->title->std_str() : "";
+                    episode.description = row->description ? row->description->std_str() : "";
+                    episode.still_url = row->still_url ? row->still_url->std_str() : "";
+                    episode.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
+                    episode.air_date = row->air_date ? row->air_date->std_str() : "";
+                    episode.created_at = row->created_at ? *row->created_at : 0;
+                    episodes.push_back(episode);
+                }
             }
         }
         return episodes;
     }
 
     void Database::updateEpisode(const Episode& episode) {
-        m_impl->executor->execute("UPDATE episodes SET title = :title, description = :description, still_url = :still_url, "
-            "runtime_minutes = :runtime_minutes, air_date = :air_date WHERE id = :id",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+        m_impl->client->executeQuery(oatpp::String("UPDATE episodes SET title = :title, description = :description, still_url = :still_url, "
+            "runtime_minutes = :runtime_minutes, air_date = :air_date WHERE id = :id"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"title", oatpp::String(episode.title)},
                 {"description", oatpp::String(episode.description)},
                 {"still_url", oatpp::String(episode.still_url)},
                 {"runtime_minutes", oatpp::Int32(episode.runtime_minutes)},
                 {"air_date", oatpp::String(episode.air_date)},
                 {"id", oatpp::Int32(episode.id)}
-            }, nullptr, nullptr
-        );
+            });
     }
 
     void Database::deleteEpisode(int id) {
@@ -700,59 +778,57 @@ public:
 
     // Statistics
     int Database::getMediaCount(ContentType type) {
-        auto result = m_impl->executor->execute("SELECT COUNT(*) FROM media_items WHERE type = :type",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT COUNT(*) FROM media_items WHERE type = :type"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"type", oatpp::String(contentTypeToString(type))}
-            }, nullptr, nullptr
-        );
+            });
 
-        if (result->isSuccess() && result->hasMoreToFetch()) {
-            auto row = result->fetch();
-            return row->getInt32(0);
+        if (result->isSuccess()) {
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<IntResultDto>>>();
+            if (dataset && dataset->size() > 0) return dataset->front()->value ? *dataset->front()->value : 0;
         }
         return 0;
     }
 
     int64_t Database::getTotalDownloadedSize() {
-        auto result = m_impl->client->executeQuery(oatpp::String("SELECT SUM(size_bytes) FROM torrents WHERE status = 'COMPLETED'"), std::unordered_map<oatpp::String, oatpp::Void>{});
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT SUM(size_bytes) AS value FROM torrents WHERE status = 'COMPLETED'"), std::unordered_map<oatpp::String, oatpp::Void>{});
 
-        if (result->isSuccess() && result->hasMoreToFetch()) {
-            auto row = result->fetch();
-            return row->getInt64(0);
+        if (result->isSuccess()) {
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<Int64ResultDto>>>();
+            if (dataset && dataset->size() > 0) return dataset->front()->value ? *dataset->front()->value : 0;
         }
         return 0;
     }
 
     std::vector<MediaItem> Database::getPopularMedia(ContentType type, int limit) {
         std::vector<MediaItem> items;
-        auto result = m_impl->executor->execute("SELECT * FROM media_items WHERE type = :type ORDER BY rating DESC LIMIT :limit",
-            std::unordered_map<oatpp::String, oatpp::Void>{
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM media_items WHERE type = :type ORDER BY rating DESC LIMIT :limit"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"type", oatpp::String(contentTypeToString(type))},
                 {"limit", oatpp::Int32(limit)}
-            }, nullptr, nullptr
-        );
+            });
 
         if (result->isSuccess()) {
-            while (result->hasMoreToFetch()) {
-                auto row = result->fetch();
-                MediaItem item;
-                item.id = row->getInt32(0);
-                item.type = stringToContentType(row->getString(1));
-                item.title = row->getString(2);
-                item.original_title = row->getString(3);
-                item.year = row->getInt32(4);
-                item.description = row->getString(5);
-                item.poster_url = row->getString(6);
-                item.backdrop_url = row->getString(7);
-                item.rating = row->getFloat32(8);
-                item.genres = row->getString(9);
-                item.runtime_minutes = row->getInt32(10);
-                item.tmdb_id = row->getString(11);
-                item.imdb_id = row->getString(12);
-                item.language = row->getString(13);
-                item.created_at = row->getInt64(14);
-                item.updated_at = row->getInt64(15);
-                items.push_back(item);
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<MediaItemDto>>>();
+            if (dataset) {
+                for (auto& row : *dataset) {
+                    MediaItem item;
+                    item.id = row->id ? *row->id : 0;
+                    item.type = stringToContentType(row->type ? row->type->std_str() : "");
+                    item.title = row->title ? row->title->std_str() : "";
+                    item.original_title = row->original_title ? row->original_title->std_str() : "";
+                    item.year = row->year ? *row->year : 0;
+                    item.description = row->description ? row->description->std_str() : "";
+                    item.poster_url = row->poster_url ? row->poster_url->std_str() : "";
+                    item.backdrop_url = row->backdrop_url ? row->backdrop_url->std_str() : "";
+                    item.rating = row->rating ? *row->rating : 0.0f;
+                    item.genres = row->genres ? row->genres->std_str() : "";
+                    item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
+                    item.tmdb_id = row->tmdb_id ? row->tmdb_id->std_str() : "";
+                    item.imdb_id = row->imdb_id ? row->imdb_id->std_str() : "";
+                    item.language = row->language ? row->language->std_str() : "";
+                    item.created_at = row->created_at ? *row->created_at : 0;
+                    item.updated_at = row->updated_at ? *row->updated_at : 0;
+                    items.push_back(item);
+                }
             }
         }
         return items;
