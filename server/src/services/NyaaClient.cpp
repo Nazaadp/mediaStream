@@ -207,7 +207,7 @@ namespace media::services {
     }
 
     // Get Anime by ID
-    std::optional<DiscoveredContent> NyaaClient::getById(const std::string& id) {
+    std::optional<DiscoveredContent> NyaaClient::getById([[maybe_unused]] const std::string& id) {
         spdlog::warn("Nyaa getById not implemented");
         return std::nullopt;
     }

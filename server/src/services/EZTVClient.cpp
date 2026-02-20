@@ -160,7 +160,7 @@ namespace media::services {
     }
 
     // Get Series by ID
-    std::optional<DiscoveredContent> EZTVClient::getById(const std::string& id) {
+    std::optional<DiscoveredContent> EZTVClient::getById([[maybe_unused]] const std::string& id) {
         spdlog::warn("EZTV getById not fully implemented");
         return std::nullopt;
     }
