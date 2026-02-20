@@ -38,6 +38,9 @@ namespace media::core {
         // Status
         [[nodiscard]] std::vector<TorrentStatus> getSessionStatus() const;
 
+        // Streaming Support
+        [[nodiscard]] std::optional<std::string> getLargestFilePath(const std::string& info_hash) const;
+
     private:
         // --- 2. DIRECT IMPLEMENTATION (Matches your .cpp) ---
         libtorrent::session m_session; 

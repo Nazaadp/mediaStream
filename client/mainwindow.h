@@ -1,14 +1,15 @@
 #pragma once
 #include <QMainWindow>
-#include <QTcpSocket>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
 #include <QVBoxLayout>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QTextEdit>
 #include <QLabel>
 #include <QListWidget>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
+#include <QMediaPlayer>
+#include <QVideoWidget>
 
 
 struct MovieData {
@@ -25,29 +26,30 @@ public:
     ~MainWindow();
 
 private slots:
-// Red (TCP Socket con Server)
-    void sendAddCommand();
+// API Commands
+    void sendAddCommand(const QString& magnet);
     void sendStatusCommand();
-    void onSocketReadyRead();
 
-// API y UI (Http con YTS)
+// API y UI
     void fetchMovieList();
     void onMovieListReceived(QNetworkReply *reply);
     void onMovieClicked(QListWidgetItem *item);
+    
+// Video Streaming
+    void streamVideo(const QString& infoHash);
 
 private:
-    void connectToServer();
-
 // UI Elements
-    QTcpSocket *socket;
     QTextEdit *statusLog;
     QLineEdit *magnetInput;
     QListWidget *movieGallery; // Nuestra grilla de películas
+    QVideoWidget *videoWidget;
+    QMediaPlayer *mediaPlayer;
 
 // Network Manager para la API
     QNetworkAccessManager *netManager;
 
 // Configuración
     QString serverIp = "192.168.1.37";
-    int serverPort = 8080;
+    int serverPort = 8000;
 };

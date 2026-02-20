@@ -95,6 +95,8 @@ namespace media::services {
         std::unique_ptr<Impl> m_impl;
     };
 
+    class TMDBFetcher;
+
     // Unified Content Discovery Manager
     class ContentDiscoveryManager {
     public:
@@ -116,6 +118,7 @@ namespace media::services {
         std::unique_ptr<YTSClient> m_yts;
         std::unique_ptr<EZTVClient> m_eztv;
         std::unique_ptr<NyaaClient> m_nyaa;
+        std::unique_ptr<TMDBFetcher> m_tmdb;
     };
 
 } // namespace media::services

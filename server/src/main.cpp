@@ -12,6 +12,7 @@
 
 // Internal Domain
 #include "mediastream/core/TorrentEngine.hpp"
+#include "mediastream/services/ContentDiscovery.hpp"
 #include "mediastream/api/HttpServer.hpp"
 
 // Platform specific (Linux) for User ID checks
@@ -80,9 +81,13 @@ int main() {
         spdlog::info("Booting Core...");
         auto engine = std::make_shared<media::core::TorrentEngine>("./downloads");
 
-        // 2. The API (Interface)
+        // 2. The Services
+        spdlog::info("Booting Services...");
+        auto discovery = std::make_shared<media::services::ContentDiscoveryManager>();
+
+        // 3. The API (Interface)
         spdlog::info("Booting API...");
-        media::api::HttpServer api_server(engine);
+        media::api::HttpServer api_server(engine, discovery);
         api_server.start();
 
         // 3. The Keep-Alive Loop

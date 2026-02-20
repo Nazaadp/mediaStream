@@ -134,4 +134,36 @@ namespace media::core {
         return statuses;
     }
 
+    // --- GET LARGEST FILE PATH ---
+    std::optional<std::string> TorrentEngine::getLargestFilePath(const std::string& info_hash_str) const {
+        std::vector<lt::torrent_handle> handles = m_session.get_torrents();
+        for (const auto& h : handles) {
+            if (!h.is_valid()) continue;
+            
+            if (to_hex_string(h.info_hash()) == info_hash_str) {
+                if (!h.torrent_file()) return std::nullopt; // Metadata not yet downloaded
+                
+                auto finfo = h.torrent_file()->files();
+                if (finfo.num_files() == 0) return std::nullopt;
+
+                int largest_index = -1;
+                int64_t largest_size = 0;
+
+                for (int i = 0; i < finfo.num_files(); ++i) {
+                    if (finfo.file_size(lt::file_index_t(i)) > largest_size) {
+                        largest_size = finfo.file_size(lt::file_index_t(i));
+                        largest_index = i;
+                    }
+                }
+
+                if (largest_index != -1) {
+                    std::filesystem::path full_path = m_download_dir;
+                    full_path /= finfo.file_path(lt::file_index_t(largest_index));
+                    return full_path.string();
+                }
+            }
+        }
+        return std::nullopt;
+    }
+
 } // namespace media::core

@@ -38,6 +38,7 @@ add_library(MediaCore
     src/services/EZTVClient.cpp
     src/services/NyaaClient.cpp
     src/services/ContentDiscoveryManager.cpp
+    src/services/TMDBFetcher.cpp
     # Add future source files here
 )
 

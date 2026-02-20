@@ -1,4 +1,5 @@
 #include "mediastream/services/ContentDiscovery.hpp"
+#include "mediastream/services/TMDBFetcher.hpp"
 #include <spdlog/spdlog.h>
 #include <algorithm>
 
@@ -7,7 +8,8 @@ namespace media::services {
     ContentDiscoveryManager::ContentDiscoveryManager() 
         : m_yts(std::make_unique<YTSClient>())
         , m_eztv(std::make_unique<EZTVClient>())
-        , m_nyaa(std::make_unique<NyaaClient>()) {
+        , m_nyaa(std::make_unique<NyaaClient>())
+        , m_tmdb(std::make_unique<TMDBFetcher>()) {
         spdlog::info("Content Discovery Manager initialized");
     }
 
@@ -62,6 +64,12 @@ namespace media::services {
             });
 
         spdlog::info("Total content discovered: {}", all_content.size());
+        
+        // Enrich with TMDB
+        for (auto& item : all_content) {
+            m_tmdb->enrichContent(item);
+        }
+        
         return all_content;
     }
 
@@ -90,12 +98,22 @@ namespace media::services {
         }
 
         spdlog::info("Search '{}' returned {} results", query, all_results.size());
+        
+        // Enrich with TMDB
+        for (auto& item : all_results) {
+            m_tmdb->enrichContent(item);
+        }
+
         return all_results;
     }
 
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchMovies(int limit) {
         try {
-            return m_yts->fetchPopular(limit);
+            auto results = m_yts->fetchPopular(limit);
+            for (auto& item : results) {
+                m_tmdb->enrichContent(item);
+            }
+            return results;
         } catch (const std::exception& e) {
             spdlog::error("Failed to fetch movies: {}", e.what());
             return {};
@@ -104,7 +122,11 @@ namespace media::services {
 
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchSeries(int limit) {
         try {
-            return m_eztv->fetchPopular(limit);
+            auto results = m_eztv->fetchPopular(limit);
+            for (auto& item : results) {
+                m_tmdb->enrichContent(item);
+            }
+            return results;
         } catch (const std::exception& e) {
             spdlog::error("Failed to fetch series: {}", e.what());
             return {};
@@ -113,7 +135,11 @@ namespace media::services {
 
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchAnime(int limit) {
         try {
-            return m_nyaa->fetchPopular(limit);
+            auto results = m_nyaa->fetchPopular(limit);
+            for (auto& item : results) {
+                m_tmdb->enrichContent(item);
+            }
+            return results;
         } catch (const std::exception& e) {
             spdlog::error("Failed to fetch anime: {}", e.what());
             return {};
