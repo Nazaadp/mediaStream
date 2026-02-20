@@ -71,7 +71,15 @@ echo -e "${GREEN}✓ Dependencies installed${NC}"
 # Configure CMake
 echo ""
 echo "[4/6] Configuring CMake..."
-cmake .. -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+
+TOOLCHAIN=$(find . -name conan_toolchain.cmake | head -n 1)
+if [ -z "$TOOLCHAIN" ]; then
+    echo -e "${RED}ERROR: conan_toolchain.cmake not found. Conan might have failed silently.${NC}"
+    exit 1
+fi
+
+echo "Using toolchain: $TOOLCHAIN"
+cmake .. -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}ERROR: CMake configuration failed${NC}"
