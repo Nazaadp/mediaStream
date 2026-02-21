@@ -1,3 +1,4 @@
 /vcpkg
 /HttpMediaStream
 .env
+/BrunoRequests
