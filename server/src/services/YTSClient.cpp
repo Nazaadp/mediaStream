@@ -92,7 +92,7 @@ namespace media::services {
                             TorrentQuality tq;
                             tq.quality = torrent.value("quality", "");
                             tq.type = torrent.value("type", "web");
-                            tq.size_bytes = std::stoll(torrent.value("size_bytes", "0"));
+                            tq.size_bytes = torrent.value("size_bytes", 0LL);
                             tq.hash = torrent.value("hash", "");
                             tq.seeders = torrent.value("seeds", 0);
                             tq.leechers = torrent.value("peers", 0);
