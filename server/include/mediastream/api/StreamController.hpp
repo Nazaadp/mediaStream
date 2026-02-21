@@ -29,8 +29,9 @@ public:
         info->summary = "Stream video file with Range support";
     }
     ENDPOINT("GET", "/api/v1/stream/{infoHash}", streamVideo,
-             PATH(String, infoHash), HEADER(String, range, "Range")) 
+             PATH(String, infoHash), REQUEST(std::shared_ptr<IncomingRequest>, request)) 
     {
+        oatpp::String range = request->getHeader("Range");
         auto file_path_opt = m_engine->getLargestFilePath(infoHash);
         if (!file_path_opt) {
             return createResponse(Status::CODE_404, "File not found or metadata not downloaded");
