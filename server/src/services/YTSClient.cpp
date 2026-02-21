@@ -44,7 +44,8 @@ namespace media::services {
     // YTS Client Implementation
     class YTSClient::Impl {
     public:
-        const std::string BASE_URL = "https://yts.mx/api/v2";
+        const std::string BASE_URL = std::getenv("YTS_URL");
+        //const std::string BASE_URL = "https://yts.pm/api/v2";
 
         std::vector<DiscoveredContent> parseMovieList(const std::string& json_response) {
             std::vector<DiscoveredContent> results;
