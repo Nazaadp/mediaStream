@@ -39,6 +39,7 @@ private:
                 tj["type"] = t.type;
                 tj["size_bytes"] = t.size_bytes;
                 tj["hash"] = t.hash;
+                tj["magnet_uri"] = t.magnet_uri;
                 tj["seeders"] = t.seeders;
                 tj["leechers"] = t.leechers;
                 root["torrents"].push_back(tj);

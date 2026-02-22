@@ -111,7 +111,6 @@ public:
         auto response = createResponse(Status::CODE_206, buffer);
         response->putHeader("Content-Range", "bytes " + std::to_string(start) + "-" + std::to_string(end) + "/" + std::to_string(file_size));
         response->putHeader("Accept-Ranges", "bytes");
-        response->putHeader("Content-Length", std::to_string(chunk_size));
         
         // Determine mime type from extension
         std::string mime = "video/mp4";
