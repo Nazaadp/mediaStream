@@ -28,7 +28,7 @@ echo "[1/6] Checking dependencies..."
 
 if ! command -v cmake &> /dev/null; then
     echo -e "${RED}ERROR: cmake not found${NC}"
-    echo "Install: sudo apt install cmake"
+    echo "Install: sudo apt update && sudo apt install cmake"
     exit 1
 fi
 
@@ -39,10 +39,14 @@ if ! command -v make &> /dev/null || ! command -v g++ &> /dev/null; then
 fi
 
 if ! command -v conan &> /dev/null; then
-    echo -e "${YELLOW}WARNING: conan not found${NC}"
-    echo "Installing conan..."
-    pip3 install conan
-    conan profile detect
+    echo -e "${RED}ERROR: conan not found${NC}"
+    echo -e "${YELLOW}Ubuntu 24.04 blocks global pip installs. You must use pipx.${NC}"
+    echo "Run the following commands to install Conan securely:"
+    echo "  sudo apt install pipx"
+    echo "  pipx ensurepath"
+    echo "  pipx install conan"
+    echo "Then, restart your SSH session and run this build script again."
+    exit 1
 fi
 
 echo -e "${GREEN}✓ Dependencies OK${NC}"
@@ -125,7 +129,5 @@ echo "  cd build"
 echo "  ./mediastream_server"
 echo ""
 echo "To test API:"
-echo "  curl http://localhost:8000/api/v1/status"
+echo "  curl 127.0.0.1:8000/api/v1/status"
 echo ""
-
-# Made with Bob
