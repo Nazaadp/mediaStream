@@ -74,9 +74,22 @@ target_link_libraries(mediastream_server PRIVATE
 
 # 5. Compiler Flags
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(mediastream_server PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    target_compile_options(MediaCore PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    # Base warnings and stack protection
+    set(HARDENING_FLAGS "-Wall" "-Wextra" "-Wpedantic" "-Werror" "-fstack-protector-strong")
+
+    # Position Independent Execution (ASLR) and Bounds Checking
+    list(APPEND HARDENING_FLAGS "-fPIE" "-O2" "-D_FORTIFY_SOURCE=2" "-Wformat" "-Werror=format-security")
+
+    target_compile_options(MediaCore PRIVATE ${HARDENING_FLAGS})
+    target_compile_options(mediastream_server PRIVATE ${HARDENING_FLAGS})
+    
+    # Linker Hardening: Read-Only Relocations (RELRO) and Bind Now
+    target_link_options(mediastream_server PRIVATE "-pie" "-Wl,-z,relro" "-Wl,-z,now")
 endif()
+
+#    target_compile_options(mediastream_server PRIVATE -Wall -Wextra -Wpedantic -Werror)
+#    target_compile_options(MediaCore PRIVATE -Wall -Wextra -Wpedantic -Werror)
+#endif()
 
 # 6. Standard
 set_property(TARGET mediastream_server PROPERTY CXX_STANDARD 20)
