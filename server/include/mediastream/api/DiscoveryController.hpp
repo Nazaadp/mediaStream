@@ -70,6 +70,36 @@ public:
             return createResponse(Status::CODE_500, "Internal Server Error");
         }
     }
+
+    ENDPOINT_INFO(getSeries) {
+        info->summary = "Get popular series";
+    }
+    ENDPOINT("GET", "/api/v1/discover/series", getSeries) {
+        try {
+            auto series = m_discovery->fetchSeries(15);
+            auto response = createResponse(Status::CODE_200, serializeToJson(series));
+            response->putHeader("Content-Type", "application/json");
+            return response;
+        } catch (const std::exception& e) {
+            spdlog::error("Discovery Error: {}", e.what());
+            return createResponse(Status::CODE_500, "Internal Server Error");
+        }
+    }
+
+    ENDPOINT_INFO(getAnime) {
+        info->summary = "Get popular anime";
+    }
+    ENDPOINT("GET", "/api/v1/discover/anime", getAnime) {
+        try {
+            auto anime = m_discovery->fetchAnime(15);
+            auto response = createResponse(Status::CODE_200, serializeToJson(anime));
+            response->putHeader("Content-Type", "application/json");
+            return response;
+        } catch (const std::exception& e) {
+            spdlog::error("Discovery Error: {}", e.what());
+            return createResponse(Status::CODE_500, "Internal Server Error");
+        }
+    }
 };
 
 #include OATPP_CODEGEN_END(ApiController)
