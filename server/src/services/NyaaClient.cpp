@@ -51,13 +51,13 @@ namespace media::services {
 
             try {
                 // Simple RSS parsing using regex (for production, use proper XML parser)
-                std::regex item_regex("<item>(.*?)</item>", std::regex::icase);
-                std::regex title_regex("<title>(.*?)</title>");
-                std::regex link_regex("<link>(.*?)</link>");
+                std::regex item_regex("<item>([\\s\\S]*?)</item>", std::regex::icase);
+                std::regex title_regex("<title>([\\s\\S]*?)</title>");
+                std::regex link_regex("<link>([\\s\\S]*?)</link>");
                 std::regex seeders_regex("<nyaa:seeders>(\\d+)</nyaa:seeders>");
                 std::regex leechers_regex("<nyaa:leechers>(\\d+)</nyaa:leechers>");
-                std::regex size_regex("<nyaa:size>(.*?)</nyaa:size>");
-                std::regex hash_regex("<nyaa:infoHash>(.*?)</nyaa:infoHash>");
+                std::regex size_regex("<nyaa:size>([\\s\\S]*?)</nyaa:size>");
+                std::regex hash_regex("<nyaa:infoHash>([\\s\\S]*?)</nyaa:infoHash>");
 
                 std::sregex_iterator items_begin(rss_response.begin(), rss_response.end(), item_regex);
                 std::sregex_iterator items_end;
