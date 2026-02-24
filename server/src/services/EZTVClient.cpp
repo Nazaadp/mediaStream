@@ -84,7 +84,13 @@ namespace media::services {
                     TorrentQuality tq;
                     tq.quality = "720p"; // EZTV typically 720p
                     tq.type = "web";
-                    tq.size_bytes = torrent.value("size_bytes", 0);
+                    if (torrent["size_bytes"].is_string()) {
+                        tq.size_bytes = std::stoull(torrent["size_bytes"].get<std::string>());
+                    } else if (torrent["size_bytes"].is_number()) {
+                        tq.size_bytes = torrent["size_bytes"].get<uint64_t>();
+                    } else {
+                        tq.size_bytes = 0;
+                    }
                     tq.hash = torrent.value("hash", "");
                     tq.seeders = torrent.value("seeds", 0);
                     tq.leechers = torrent.value("peers", 0);
