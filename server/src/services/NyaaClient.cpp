@@ -52,7 +52,7 @@ namespace media::services {
             try {
                 // Simple RSS parsing using regex (for production, use proper XML parser)
                 std::regex item_regex("<item>(.*?)</item>", std::regex::icase);
-                std::regex title_regex("<title><!\\[CDATA\\[(.*?)\\]\\]></title>");
+                std::regex title_regex("<title>(.*?)</title>");
                 std::regex link_regex("<link>(.*?)</link>");
                 std::regex seeders_regex("<nyaa:seeders>(\\d+)</nyaa:seeders>");
                 std::regex leechers_regex("<nyaa:leechers>(\\d+)</nyaa:leechers>");
