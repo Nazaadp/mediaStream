@@ -1,6 +1,7 @@
 /vcpkg
 /HttpMediaStream
 .env
+quick-start-vm.sh
 /BrunoRequests
 /WORKFLOW.md
 /AGENTS.md
@@ -11,4 +12,4 @@
 /SECURITY_CHANGES.md
 /TESTING_GUIDE.md
 /WINDOWS_BUILD.md
-/quick-start-vm.sh
+/NOTAS_LOCALES.md
