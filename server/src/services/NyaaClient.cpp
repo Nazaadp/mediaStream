@@ -160,7 +160,7 @@ namespace media::services {
     // Fetch Popular Anime
     std::vector<DiscoveredContent> NyaaClient::fetchPopular(int limit) {
         // Fetch from Nyaa RSS feed (sorted by seeders)
-        std::string url = m_impl->BASE_URL + "/?page=rss&c=1_2&s=seeders&o=desc";
+        std::string url = m_impl->BASE_URL + "/?s=seeders&o=desc";
         
         spdlog::info("Fetching popular anime from Nyaa...");
         std::string response = httpGet(url);
