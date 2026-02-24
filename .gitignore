@@ -2,3 +2,13 @@
 /HttpMediaStream
 .env
 /BrunoRequests
+/WORKFLOW.md
+/AGENTS.md
+/ARCHITECTURE.md
+/MCPs.md
+/QUICKSTART.md
+/TODO.md
+/SECURITY_CHANGES.md
+/TESTING_GUIDE.md
+/WINDOWS_BUILD.md
+/quick-start-vm.sh
