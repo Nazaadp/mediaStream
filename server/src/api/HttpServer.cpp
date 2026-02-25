@@ -32,6 +32,7 @@ namespace media::api {
     public:
         std::shared_ptr<OutgoingResponse> intercept(const std::shared_ptr<IncomingRequest>& request,
                                                     const std::shared_ptr<OutgoingResponse>& response) override {
+            (void)request; // Suppress unused parameter warning
             response->putHeaderIfNotExists("Access-Control-Allow-Origin", "http://localhost:1420");
             response->putHeaderIfNotExists("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
             response->putHeaderIfNotExists("Access-Control-Allow-Headers", "DNT, User-Agent, X-Requested-With, If-Modified-Since, Cache-Control, Content-Type, Range, Authorization");
