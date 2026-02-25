@@ -56,6 +56,13 @@ public:
         , m_discovery(discovery) 
     {}
 
+    ENDPOINT_INFO(optionsPreflight) {
+        info->summary = "CORS Preflight";
+    }
+    ENDPOINT("OPTIONS", "/api/v1/discover/*", optionsPreflight) {
+        return createResponse(Status::CODE_204, "");
+    }
+
     ENDPOINT_INFO(getMovies) {
         info->summary = "Get popular movies";
     }

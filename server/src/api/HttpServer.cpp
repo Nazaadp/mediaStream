@@ -8,9 +8,8 @@
 #include "oatpp/network/Server.hpp"
 #include "oatpp/network/tcp/server/ConnectionProvider.hpp"
 #include "oatpp/web/server/HttpConnectionHandler.hpp"
+#include "oatpp/web/server/interceptor/ResponseInterceptor.hpp"
 #include "oatpp/parser/json/mapping/ObjectMapper.hpp"
-#include "oatpp/web/server/interceptor/AllowCorsGlobal.hpp"
-#include "oatpp/web/server/interceptor/AllowOptionsGlobal.hpp"
 
 // SWAGGER DISABLED FOR PHASE 3 TESTING
 // #include "oatpp-swagger/Controller.hpp"
@@ -27,6 +26,19 @@ namespace media::api {
     HttpServer::~HttpServer() {
         stop();
     }
+
+    // Custom CORS Interceptor for Oatpp v1.3.0 where AllowCorsGlobal doesn't exist natively
+    class CorsInterceptor : public oatpp::web::server::interceptor::ResponseInterceptor {
+    public:
+        std::shared_ptr<OutgoingResponse> intercept(const std::shared_ptr<IncomingRequest>& request,
+                                                    const std::shared_ptr<OutgoingResponse>& response) override {
+            response->putHeaderIfNotExists("Access-Control-Allow-Origin", "http://localhost:1420");
+            response->putHeaderIfNotExists("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
+            response->putHeaderIfNotExists("Access-Control-Allow-Headers", "DNT, User-Agent, X-Requested-With, If-Modified-Since, Cache-Control, Content-Type, Range, Authorization");
+            response->putHeaderIfNotExists("Access-Control-Max-Age", "1728000");
+            return response;
+        }
+    };
 
     void HttpServer::start() {
         if (m_should_run) return;
@@ -78,15 +90,9 @@ namespace media::api {
             // 2. Swagger Disabled (Bypassing version conflict)
             // We will verify the API using raw CURL commands instead.
             
-            // 3. Create Connection Handler and add CORS interceptors
+            // 3. Create Connection Handler and add custom CORS interceptors
             auto connectionHandler = oatpp::web::server::HttpConnectionHandler::createShared(router);
-            
-            connectionHandler->addRequestInterceptor(std::make_shared<oatpp::web::server::interceptor::AllowOptionsGlobal>());
-            connectionHandler->addResponseInterceptor(std::make_shared<oatpp::web::server::interceptor::AllowCorsGlobal>(
-                "http://localhost:1420", 
-                "GET, POST, OPTIONS, PUT, DELETE", 
-                "DNT, User-Agent, X-Requested-With, If-Modified-Since, Cache-Control, Content-Type, Range, Authorization"
-            ));
+            connectionHandler->addResponseInterceptor(std::make_shared<CorsInterceptor>());
 
             // 4. Create Server
             oatpp::network::Server server(connectionProvider, connectionHandler);
