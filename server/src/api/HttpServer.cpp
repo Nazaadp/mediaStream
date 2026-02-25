@@ -9,6 +9,7 @@
 #include "oatpp/network/tcp/server/ConnectionProvider.hpp"
 #include "oatpp/web/server/HttpConnectionHandler.hpp"
 #include "oatpp/parser/json/mapping/ObjectMapper.hpp"
+#include "oatpp/web/server/interceptor/AllowCorsGlobal.hpp"
 
 // SWAGGER DISABLED FOR PHASE 3 TESTING
 // #include "oatpp-swagger/Controller.hpp"
@@ -49,6 +50,21 @@ namespace media::api {
         try {
             auto objectMapper = oatpp::parser::json::mapping::ObjectMapper::createShared();
             auto router = oatpp::web::server::HttpRouter::createShared();
+            
+            // Allow Tauri Web client to bypass strict CORS policies internally
+            router->routeInterceptor(oatpp::web::server::interceptor::AllowCorsGlobal::createShared("http://localhost:1420", "GET, POST, OPTIONS, PUT, DELETE", "DNT, User-Agent, X-Requested-With, If-Modified-Since, Cache-Control, Content-Type, Range"));
+
+            /*
+            
+                When a device connects to your server, that C++ Interceptor will read the incoming Origin: header.
+
+                If the Origin is "http://localhost:1420" (Your PC), your C++ server replies: "Access-Control-Allow-Origin: http://localhost:1420".
+                If the Origin is "tauri://localhost" (Your Android), your C++ server replies: "Access-Control-Allow-Origin: tauri://localhost".
+                If the Origin is "http://evil-hacker.com", your C++ server replies with nothing, and the hacker's browser blocks the connection!
+                            
+            */
+
+
             auto connectionProvider = oatpp::network::tcp::server::ConnectionProvider::createShared({"0.0.0.0", 8000, oatpp::network::Address::IP_4});
 
             // 1. Register API Controllers
