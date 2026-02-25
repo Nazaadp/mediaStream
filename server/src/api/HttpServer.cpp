@@ -10,6 +10,7 @@
 #include "oatpp/web/server/HttpConnectionHandler.hpp"
 #include "oatpp/parser/json/mapping/ObjectMapper.hpp"
 #include "oatpp/web/server/interceptor/AllowCorsGlobal.hpp"
+#include "oatpp/web/server/interceptor/AllowOptionsGlobal.hpp"
 
 // SWAGGER DISABLED FOR PHASE 3 TESTING
 // #include "oatpp-swagger/Controller.hpp"
@@ -50,9 +51,6 @@ namespace media::api {
         try {
             auto objectMapper = oatpp::parser::json::mapping::ObjectMapper::createShared();
             auto router = oatpp::web::server::HttpRouter::createShared();
-            
-            // Allow Tauri Web client to bypass strict CORS policies internally
-            router->routeInterceptor(oatpp::web::server::interceptor::AllowCorsGlobal::createShared("http://localhost:1420", "GET, POST, OPTIONS, PUT, DELETE", "DNT, User-Agent, X-Requested-With, If-Modified-Since, Cache-Control, Content-Type, Range"));
 
             /*
             
@@ -80,9 +78,18 @@ namespace media::api {
             // 2. Swagger Disabled (Bypassing version conflict)
             // We will verify the API using raw CURL commands instead.
             
-            // 3. Create Server
-            oatpp::network::Server server(connectionProvider, 
-                                          oatpp::web::server::HttpConnectionHandler::createShared(router));
+            // 3. Create Connection Handler and add CORS interceptors
+            auto connectionHandler = oatpp::web::server::HttpConnectionHandler::createShared(router);
+            
+            connectionHandler->addRequestInterceptor(std::make_shared<oatpp::web::server::interceptor::AllowOptionsGlobal>());
+            connectionHandler->addResponseInterceptor(std::make_shared<oatpp::web::server::interceptor::AllowCorsGlobal>(
+                "http://localhost:1420", 
+                "GET, POST, OPTIONS, PUT, DELETE", 
+                "DNT, User-Agent, X-Requested-With, If-Modified-Since, Cache-Control, Content-Type, Range, Authorization"
+            ));
+
+            // 4. Create Server
+            oatpp::network::Server server(connectionProvider, connectionHandler);
             
             spdlog::info("REST API listening on port 8000...");
             
