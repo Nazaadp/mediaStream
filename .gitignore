@@ -13,3 +13,9 @@ quick-start-vm.sh
 /TESTING_GUIDE.md
 /WINDOWS_BUILD.md
 /NOTAS_LOCALES.md
+
+# Tauri / Frontend
+/clientTauri/node_modules
+/clientTauri/src-tauri/target
+/clientTauri/.svelte-kit
+/clientTauri/dist
