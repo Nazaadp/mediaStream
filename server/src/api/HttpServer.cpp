@@ -36,6 +36,7 @@ namespace media::api {
             response->putHeaderIfNotExists("Access-Control-Allow-Origin", "http://localhost:1420");
             response->putHeaderIfNotExists("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
             response->putHeaderIfNotExists("Access-Control-Allow-Headers", "DNT, User-Agent, X-Requested-With, If-Modified-Since, Cache-Control, Content-Type, Range, Authorization");
+            response->putHeaderIfNotExists("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length");
             response->putHeaderIfNotExists("Access-Control-Max-Age", "1728000");
             return response;
         }
