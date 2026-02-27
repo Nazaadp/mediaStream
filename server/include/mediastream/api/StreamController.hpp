@@ -25,6 +25,12 @@ public:
         , m_engine(engine) 
     {}
 
+    // --- OPTIONS CORS endpoint ---
+    ENDPOINT_INFO(optionsStreamPrefix) { info->summary = "CORS Preflight"; }
+    ENDPOINT("OPTIONS", "/api/v1/stream/*", optionsStreamPrefix) {
+        return createResponse(Status::CODE_204, "");
+    }
+
     ENDPOINT_INFO(streamVideo) {
         info->summary = "Stream video file with Range support";
     }

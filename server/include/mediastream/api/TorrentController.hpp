@@ -23,6 +23,16 @@ public:
         , m_engine(engine) 
     {}
 
+    // --- OPTIONS CORS endpoints ---
+    ENDPOINT_INFO(optionsTorrents) { info->summary = "CORS Preflight"; }
+    ENDPOINT("OPTIONS", "/api/v1/torrents", optionsTorrents) { return createResponse(Status::CODE_204, ""); }
+
+    ENDPOINT_INFO(optionsTorrentsWildcard) { info->summary = "CORS Preflight"; }
+    ENDPOINT("OPTIONS", "/api/v1/torrents/*", optionsTorrentsWildcard) { return createResponse(Status::CODE_204, ""); }
+
+    ENDPOINT_INFO(optionsStatus) { info->summary = "CORS Preflight"; }
+    ENDPOINT("OPTIONS", "/api/v1/status", optionsStatus) { return createResponse(Status::CODE_204, ""); }
+
     // --- ENDPOINT 1: Add Magnet ---
     ENDPOINT_INFO(addTorrent) {
         info->summary = "Add a new Magnet Link";
