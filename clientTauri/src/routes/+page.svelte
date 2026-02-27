@@ -63,6 +63,28 @@
             alert("Failed to connect to the backend securely.");
         }
     }
+
+    async function handleDownload(event) {
+        const { media, torrent } = event.detail;
+        console.log("Downloading:", media.title, "Torrent:", torrent.hash);
+        
+        try {
+            const res = await fetch('https://192.168.1.37:443/api/v1/torrents', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ magnet_link: torrent.magnet_uri })
+            });
+
+            if (res.ok) {
+                // The MediaCard will handle refreshing its own state natively 
+            } else {
+                alert(`Error starting download: ${res.statusText}`);
+            }
+        } catch (e) {
+            console.error("Failed to start download:", e);
+            alert("Failed to connect to the backend securely.");
+        }
+    }
 </script>
 
 <!-- HEADER -->
@@ -162,7 +184,7 @@
 </main>
 
 {#if selectedMedia}
-    <MediaCard item={selectedMedia} on:close={closeMediaCard} on:play={handlePlay} />
+    <MediaCard item={selectedMedia} on:close={closeMediaCard} on:play={handlePlay} on:download={handleDownload} />
 {/if}
 
 <style>
