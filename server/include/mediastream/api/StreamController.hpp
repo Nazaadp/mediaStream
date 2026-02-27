@@ -88,6 +88,11 @@ public:
             end = file_size - 1;
         }
 
+        // --- THE MAGIC FIX FOR SEEKING ---
+        // Block and wait for libtorrent to download the requested start bytes 
+        // to avoid serving zeros from pre-allocated files.
+        m_engine->waitForPiece(target_hash, start);
+
         uint64_t chunk_size = end - start + 1;
         
         // Limit chunk size to 4MB max for better streaming responsiveness
