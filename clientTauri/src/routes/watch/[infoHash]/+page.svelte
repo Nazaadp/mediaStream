@@ -1,0 +1,229 @@
+<script>
+    import { page } from '$app/stores';
+    import { goto } from '$app/navigation';
+    import { onMount, onDestroy } from 'svelte';
+
+    $: infoHash = $page.params.infoHash;
+    $: videoSrc = `https://192.168.1.37:443/api/v1/stream/${infoHash}`;
+
+    let videoElement;
+    let isBuffering = true;
+    let isPlaying = false;
+    let error = null;
+
+    // A simple polling to check if torrent is ready, optional but good for UX
+    let statusInterval;
+    let torrentProgress = 0;
+
+    onMount(() => {
+        // We can poll the backend for torrent status to show download progress or readiness
+        statusInterval = setInterval(async () => {
+            try {
+                const res = await fetch('https://192.168.1.37:443/api/v1/status');
+                if (res.ok) {
+                    const statusList = await res.json();
+                    const myTorrent = statusList.find(t => t.info_hash === infoHash);
+                    if (myTorrent) {
+                        torrentProgress = myTorrent.progress;
+                        // If it's ready to play and we are buffering, let the video element take over
+                    }
+                }
+            } catch (e) {
+                console.warn("Status fetch failed", e);
+            }
+        }, 3000);
+    });
+
+    onDestroy(() => {
+        if (statusInterval) clearInterval(statusInterval);
+    });
+
+    function goBack() {
+        // Depending on UX, we might want to tell the server to remove the torrent, 
+        // or just keep it downloading in the background. For now, just go back.
+        goto('/');
+    }
+
+    function handleVideoWaiting() {
+        isBuffering = true;
+    }
+
+    function handleVideoPlaying() {
+        isBuffering = false;
+        isPlaying = true;
+    }
+
+    function handleVideoPause() {
+        isPlaying = false;
+    }
+
+    function handleVideoError(e) {
+        console.error("Video Error:", e);
+        error = "Failed to load media stream. The backend may still be buffering the initial metadata.";
+        isBuffering = true; 
+        
+        // Try to recover by reloading after 5 seconds if it's an initial metadata issue
+        setTimeout(() => {
+            if (videoElement && error) {
+                error = null;
+                isBuffering = true;
+                videoElement.load();
+                videoElement.play().catch(err => console.error("Autoplay prevented:", err));
+            }
+        }, 5000);
+    }
+</script>
+
+<div class="player-container">
+    <!-- Top Bar -->
+    <div class="top-bar">
+        <button class="back-btn" on:click={goBack}>
+            <svg xmlns="http://www.w3.org/2005/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            Back to Browse
+        </button>
+        <div class="session-info">
+            {#if torrentProgress > 0}
+                <span class="progress-badge">Buffer: {(torrentProgress * 100).toFixed(1)}%</span>
+            {/if}
+        </div>
+    </div>
+
+    <!-- Video Element -->
+    <!-- svelte-ignore a11y-media-has-caption -->
+    <video 
+        bind:this={videoElement}
+        src={videoSrc}
+        controls
+        autoplay
+        crossorigin="anonymous"
+        on:waiting={handleVideoWaiting}
+        on:playing={handleVideoPlaying}
+        on:pause={handleVideoPause}
+        on:error={handleVideoError}
+        class="media-video"
+    >
+        Your browser does not support HTML5 video.
+    </video>
+
+    <!-- Overlays -->
+    {#if isBuffering && !error}
+        <div class="overlay buffering-overlay">
+            <div class="spinner"></div>
+            <p>Buffering from Torrent Swarm...</p>
+        </div>
+    {/if}
+
+    {#if error}
+        <div class="overlay error-overlay">
+            <div class="spinner"></div>
+            <p>{error}</p>
+        </div>
+    {/if}
+</div>
+
+<style>
+    .player-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: #000;
+        z-index: 2000;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .top-bar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        padding: var(--spacing-md) var(--spacing-xl);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+        z-index: 2010;
+        transition: opacity var(--transition-normal);
+    }
+
+    /* Hide top bar when playing and not hovering, handled by native controls usually, but we keep it simple here */
+    .player-container:not(:hover) .top-bar {
+        opacity: 0.8;
+    }
+
+    .back-btn {
+        background: rgba(20, 20, 20, 0.6);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 8px 16px;
+        border-radius: var(--border-radius-sm);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        backdrop-filter: blur(10px);
+        transition: all var(--transition-fast);
+    }
+
+    .back-btn:hover {
+        background: white;
+        color: black;
+        transform: scale(1.05);
+    }
+
+    .progress-badge {
+        background: rgba(229, 9, 20, 0.2);
+        color: var(--accent-color);
+        border: 1px solid var(--accent-color);
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        font-weight: bold;
+    }
+
+    .media-video {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        background-color: #000;
+        outline: none;
+    }
+
+    .overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(10px);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 2005;
+        color: white;
+        font-size: 1.2rem;
+    }
+
+    .error-overlay {
+        background-color: rgba(0, 0, 0, 0.85);
+    }
+
+    .spinner {
+        width: 60px;
+        height: 60px;
+        border: 4px solid rgba(255,255,255,0.1);
+        border-top: 4px solid var(--accent-color);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
