@@ -40,6 +40,7 @@ namespace media::core {
 
         // Streaming Support
         [[nodiscard]] std::optional<std::string> getLargestFilePath(const std::string& info_hash) const;
+        void waitForPiece(const std::string& info_hash, uint64_t file_offset);
 
     private:
         // --- 2. DIRECT IMPLEMENTATION (Matches your .cpp) ---
