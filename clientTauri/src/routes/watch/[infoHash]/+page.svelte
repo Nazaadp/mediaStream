@@ -37,12 +37,12 @@
                         torrentState = myTorrent.state;
 
                         // Only log periodically if not full to avoid spam, or just log once it updates
-                        console.log("progress: ", torrentProgress, "state: " , torrentState);
+                        //console.log("progress: ", torrentProgress, "state: " , torrentState);
                         
                         // If progress > 0, it means it finished downloading metadata 
                         // and has started writing file pieces to disk.
-                        if (torrentProgress > 0 && !isReadyToPlay) {
-                            console.log("Torrent is ready! Initializing stream.");
+                        if (torrentProgress > 0.05 && !isReadyToPlay) {
+                            console.log("Torrent is ready! Initializing stream.","progress: ", torrentProgress);
                             isReadyToPlay = true;
                         }
                     } else {
