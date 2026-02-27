@@ -68,6 +68,17 @@ namespace media::core {
 
         try {
             lt::add_torrent_params params = lt::parse_magnet_uri(magnet_uri);
+            
+            // Check if it already exists
+            std::string incoming_hash = to_hex_string(params.info_hashes.get_best());
+            std::vector<lt::torrent_handle> handles = m_session.get_torrents();
+            for (const auto& h : handles) {
+                if (h.is_valid() && to_hex_string(h.info_hash()) == incoming_hash) {
+                    spdlog::info("Torrent already exists in session. Skiping add: {}", incoming_hash);
+                    return; // Already downloading or seeding
+                }
+            }
+
             params.save_path = m_download_dir.string();
             
             // Streaming Optimization: Sequential Download
