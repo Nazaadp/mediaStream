@@ -4,34 +4,45 @@
     import { onMount, onDestroy } from 'svelte';
 
     $: infoHash = $page.params.infoHash;
-    $: videoSrc = `https://192.168.1.37:443/api/v1/stream/${infoHash}`;
+    $: videoSrc = isReadyToPlay ? `https://192.168.1.37:443/api/v1/stream/${infoHash}` : '';
 
     let videoElement;
-    let isBuffering = true;
+    
+    // UI State
+    let isReadyToPlay = false;  // True when backend has the file created
+    let isBuffering = true;     // True while waiting for video to load or buffering
     let isPlaying = false;
     let error = null;
 
-    // A simple polling to check if torrent is ready, optional but good for UX
+    // Torrent State
     let statusInterval;
     let torrentProgress = 0;
+    let torrentState = "Connecting to peers...";
 
     onMount(() => {
-        // We can poll the backend for torrent status to show download progress or readiness
+        // Poll the backend for torrent status every 1.5 seconds
         statusInterval = setInterval(async () => {
             try {
                 const res = await fetch('https://192.168.1.37:443/api/v1/status');
                 if (res.ok) {
                     const statusList = await res.json();
                     const myTorrent = statusList.find(t => t.info_hash === infoHash);
+                    
                     if (myTorrent) {
                         torrentProgress = myTorrent.progress;
-                        // If it's ready to play and we are buffering, let the video element take over
+                        torrentState = myTorrent.state;
+                        
+                        // If progress > 0, it means it finished downloading metadata 
+                        // and has started writing file pieces to disk.
+                        if (torrentProgress > 0 && !isReadyToPlay) {
+                            isReadyToPlay = true;
+                        }
                     }
                 }
             } catch (e) {
                 console.warn("Status fetch failed", e);
             }
-        }, 3000);
+        }, 1500);
     });
 
     onDestroy(() => {
@@ -39,8 +50,6 @@
     });
 
     function goBack() {
-        // Depending on UX, we might want to tell the server to remove the torrent, 
-        // or just keep it downloading in the background. For now, just go back.
         goto('/');
     }
 
@@ -59,18 +68,16 @@
 
     function handleVideoError(e) {
         console.error("Video Error:", e);
-        error = "Failed to load media stream. The backend may still be buffering the initial metadata.";
-        isBuffering = true; 
+        // HTML5 video errors often happen if the browser tries to read the stream 
+        // before enough of the moov atom / header is downloaded.
         
-        // Try to recover by reloading after 5 seconds if it's an initial metadata issue
+        // Try to recover by reloading a bit later
         setTimeout(() => {
-            if (videoElement && error) {
-                error = null;
-                isBuffering = true;
+            if (videoElement && isReadyToPlay) {
                 videoElement.load();
-                videoElement.play().catch(err => console.error("Autoplay prevented:", err));
+                videoElement.play().catch(() => {});
             }
-        }, 5000);
+        }, 3000);
     }
 </script>
 
@@ -106,10 +113,10 @@
     </video>
 
     <!-- Overlays -->
-    {#if isBuffering && !error}
+    {#if !isReadyToPlay || (isBuffering && !error)}
         <div class="overlay buffering-overlay">
             <div class="spinner"></div>
-            <p>Buffering from Torrent Swarm...</p>
+            <p>{!isReadyToPlay ? `Establishing connection... (${torrentState})` : 'Buffering media stream...'}</p>
         </div>
     {/if}
 
