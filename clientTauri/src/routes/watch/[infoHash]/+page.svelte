@@ -3,8 +3,9 @@
     import { goto } from '$app/navigation';
     import { onMount, onDestroy } from 'svelte';
 
-    $: infoHash = $page.params.infoHash;
-    $: videoSrc = isReadyToPlay ? `https://192.168.1.37:443/api/v1/stream/${infoHash}` : '';
+    // Use the Svelte store directly to avoid reactive closure scope bugs
+    const infoHash = $page.params.infoHash;
+    $: videoSrc = isReadyToPlay ? `https://192.168.1.37:443/api/v1/stream/${infoHash}` : null;
 
     let videoElement;
     
@@ -20,23 +21,33 @@
     let torrentState = "Connecting to peers...";
 
     onMount(() => {
+        console.log("Started Video Player component for hash:", infoHash);
+        
         // Poll the backend for torrent status every 1.5 seconds
         statusInterval = setInterval(async () => {
             try {
                 const res = await fetch('https://192.168.1.37:443/api/v1/status');
                 if (res.ok) {
                     const statusList = await res.json();
-                    const myTorrent = statusList.find(t => t.info_hash === infoHash);
+                    
+                    const myTorrent = statusList.find(t => t.info_hash.toLowerCase() === infoHash.toLowerCase());
                     
                     if (myTorrent) {
                         torrentProgress = myTorrent.progress;
                         torrentState = myTorrent.state;
+
+                        // Only log periodically if not full to avoid spam, or just log once it updates
+                        console.log("progress: ", torrentProgress, "state: " , torrentState);
                         
                         // If progress > 0, it means it finished downloading metadata 
                         // and has started writing file pieces to disk.
                         if (torrentProgress > 0 && !isReadyToPlay) {
+                            console.log("Torrent is ready! Initializing stream.");
                             isReadyToPlay = true;
                         }
+                    } else {
+                        console.warn("Torrent not found in backend status loop! Target Hash:", infoHash);
+                        console.log("Backend provided hashes:", statusList.map(t => t.info_hash));
                     }
                 }
             } catch (e) {
