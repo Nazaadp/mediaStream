@@ -109,10 +109,16 @@ public:
         // If we read less than chunk_size (e.g. at the end or file updating)
         chunk_size = file.gcount();
         if (chunk_size == 0) {
-            // Probably hitting end of currently downloaded piece
-            // Serve whatever we have, or wait? Let's just return what we got.
-            // If length is 0, return 416
-            return createResponse(Status::CODE_416, "Requested Range Not Satisfiable currently");
+            // Hitting the end of the currently downloaded piece in a growing file.
+            // If we return 416, the browser thinks the entire video is finished and stops.
+            // Instead, we return a 206 with 0 bytes to force the browser to gently ask again soon.
+            // (Alternative: sleep and block here, but oatpp async handlers prefer returning).
+            end = start;
+            auto empty_buffer = oatpp::String("");
+            auto response = createResponse(Status::CODE_206, empty_buffer);
+            response->putHeader("Content-Range", "bytes " + std::to_string(start) + "-" + std::to_string(end) + "/*");
+            response->putHeader("Accept-Ranges", "bytes");
+            return response;
         }
         
         // Adjust end based on actual read bytes
