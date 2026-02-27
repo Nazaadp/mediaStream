@@ -38,7 +38,12 @@ public:
              PATH(String, infoHash), REQUEST(std::shared_ptr<IncomingRequest>, request)) 
     {
         oatpp::String range = request->getHeader("Range");
-        auto file_path_opt = m_engine->getLargestFilePath(infoHash);
+        
+        std::string target_hash = infoHash->c_str();
+        std::transform(target_hash.begin(), target_hash.end(), target_hash.begin(),
+                       [](unsigned char c){ return std::tolower(c); });
+
+        auto file_path_opt = m_engine->getLargestFilePath(target_hash);
         if (!file_path_opt) {
             return createResponse(Status::CODE_404, "File not found or metadata not downloaded");
         }
