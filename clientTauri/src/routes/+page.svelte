@@ -1,5 +1,6 @@
 <script>
     import { onMount } from 'svelte';
+    import { goto } from '$app/navigation';
     import PosterCard from '../lib/PosterCard.svelte';
     import MediaCard from '../lib/MediaCard.svelte';
 
@@ -14,13 +15,13 @@
     onMount(async () => {
         // Fetch movies
         try {
-            const moviesRes = await fetch('https://192.168.1.37/api/v1/discover/movies');
+            const moviesRes = await fetch('https://192.168.1.37:443/api/v1/discover/movies');
             if (moviesRes.ok) movies = await moviesRes.json();
             
-            const seriesRes = await fetch('https://192.168.1.37/api/v1/discover/series');
+            const seriesRes = await fetch('https://192.168.1.37:443/api/v1/discover/series');
             if (seriesRes.ok) series = await seriesRes.json();
             
-            const animeRes = await fetch('https://192.168.1.37/api/v1/discover/anime');
+            const animeRes = await fetch('https://192.168.1.37:443/api/v1/discover/anime');
             if (animeRes.ok) anime = await animeRes.json();
         } catch (e) {
             console.error("Failed to fetch discovery lists. Is the C++ Server running?", e);
@@ -37,11 +38,30 @@
         document.body.style.overflow = 'auto';
     }
 
-    function handlePlay(event) {
+    async function handlePlay(event) {
         const { media, torrent } = event.detail;
         console.log("Playing:", media.title, "Torrent:", torrent.hash);
-        // Here we will later ping the backend to add magnet, and go to VideoPlayer route
-        alert(`Starting stream for: ${media.title} [${torrent.quality}]\nMagnet Hash: ${torrent.hash}`);
+        
+        try {
+            const res = await fetch('https://192.168.1.37:443/api/v1/torrents', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ magnet_link: torrent.magnet_uri })
+            });
+
+            if (res.ok) {
+                // Torrent added successfully, go to video player
+                goto(`/watch/${torrent.hash}`);
+            } else {
+                const err = await res.json();
+                alert(`Error starting stream: ${err.message || res.statusText}`);
+            }
+        } catch (e) {
+            console.error("Failed to start stream:", e);
+            alert("Failed to connect to the backend securely.");
+        }
     }
 </script>
 
