@@ -13,6 +13,8 @@
 
 #include <sstream>
 #include <iomanip>
+#include <thread>
+#include <chrono>
 #include <spdlog/spdlog.h>
 
 // Define alias for this file only
@@ -175,6 +177,70 @@ namespace media::core {
             }
         }
         return std::nullopt;
+    }
+
+    // --- WAIT FOR PIECE ---
+    void TorrentEngine::waitForPiece(const std::string& info_hash_str, uint64_t file_offset) {
+        std::vector<lt::torrent_handle> handles = m_session.get_torrents();
+        for (const auto& h : handles) {
+            if (!h.is_valid()) continue;
+            
+            if (to_hex_string(h.info_hash()) == info_hash_str) {
+                if (!h.torrent_file()) return;
+                
+                auto finfo = h.torrent_file()->files();
+                if (finfo.num_files() == 0) return;
+
+                int largest_index = -1;
+                int64_t largest_size = 0;
+
+                for (int i = 0; i < finfo.num_files(); ++i) {
+                    if (finfo.file_size(lt::file_index_t(i)) > largest_size) {
+                        largest_size = finfo.file_size(lt::file_index_t(i));
+                        largest_index = i;
+                    }
+                }
+
+                if (largest_index != -1) {
+                    // Calculate the absolute byte offset within the torrent
+                    int64_t torrent_offset = finfo.file_offset(lt::file_index_t(largest_index)) + file_offset;
+                    // Calculate piece index
+                    int piece_length = h.torrent_file()->piece_length();
+                    if (piece_length <= 0) return;
+                    
+                    lt::piece_index_t piece_idx(torrent_offset / piece_length);
+
+                    // If piece index is beyond total pieces, return
+                    if (piece_idx >= lt::piece_index_t(h.torrent_file()->num_pieces())) return;
+
+                    // Prioritize piece and a few subsequent pieces for smooth streaming
+                    h.set_piece_deadline(piece_idx, 0, lt::torrent_handle::alert_when_available);
+                    h.piece_priority(piece_idx, lt::top_priority);
+                    
+                    // Also boost priority of next few pieces
+                    for (int i = 1; i <= 3; ++i) {
+                        lt::piece_index_t next_p(static_cast<int>(piece_idx) + i);
+                        if (next_p < lt::piece_index_t(h.torrent_file()->num_pieces())) {
+                            h.piece_priority(next_p, lt::top_priority);
+                            h.set_piece_deadline(next_p, i * 1000); // 1, 2, 3 seconds deadline
+                        }
+                    }
+
+                    // Block and wait for the piece to be downloaded (max 15 seconds limit so http server thread doesn't hang forever)
+                    int max_wait_ms = 15000;
+                    int waited = 0;
+                    while (!h.have_piece(piece_idx) && waited < max_wait_ms) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                        waited += 100;
+                    }
+
+                    if (waited >= max_wait_ms) {
+                         spdlog::warn("Timeout waiting for piece {} to download.", static_cast<int>(piece_idx));
+                    }
+                }
+                return;
+            }
+        }
     }
 
 } // namespace media::core
