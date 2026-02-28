@@ -322,7 +322,7 @@ public:
         }
 
         // Also fallback to checking Title AND Year as a last resort UNIQUE check
-        auto result = m_impl->client->executeQuery(oatpp::String("SELECT id FROM media_items WHERE title = :title AND year = :year"), std::unordered_map<oatpp::String, oatpp::Void>{
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT id AS value FROM media_items WHERE title = :title AND year = :year"), std::unordered_map<oatpp::String, oatpp::Void>{
             {"title", oatpp::String(item.title)},
             {"year", oatpp::Int32(item.year)}
         });
