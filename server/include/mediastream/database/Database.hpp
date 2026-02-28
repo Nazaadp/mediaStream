@@ -102,6 +102,7 @@ namespace media::database {
         int upsertMediaItem(const MediaItem& item);
         std::optional<MediaItem> getMediaItem(int id);
         std::optional<MediaItem> getMediaItemByTmdbId(const std::string& tmdb_id);
+        std::optional<MediaItem> getMediaItemByImdbId(const std::string& imdb_id);
         std::vector<MediaItem> getAllMedia(ContentType type);
         std::vector<MediaItem> searchMedia(const std::string& query, ContentType type);
         void updateMediaItem(const MediaItem& item);
