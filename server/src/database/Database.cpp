@@ -303,11 +303,34 @@ public:
             auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT last_insert_rowid() AS value"), std::unordered_map<oatpp::String, oatpp::Void>{});
             if (idResult->isSuccess()) {
                 auto dataset = idResult->fetch<oatpp::Vector<oatpp::Object<Int64ResultDto>>>();
-                if (dataset && dataset->size() > 0) {
-                    return static_cast<int>(dataset->front()->value ? *dataset->front()->value : 0);
+                if (dataset && dataset->size() > 0 && dataset->front()->value) {
+                    int last_id = static_cast<int>(*dataset->front()->value);
+                    if (last_id > 0) return last_id;
                 }
             }
         }
+        
+        // If last_insert_rowid() failed or returned 0 (e.g., due to INSERT OR IGNORE over connection pool)
+        // explicitly fetch the ID we just inserted/ignored
+        if (!item.tmdb_id.empty()) {
+            auto existing = getMediaItemByTmdbId(item.tmdb_id);
+            if (existing) return existing->id;
+        }
+        if (!item.imdb_id.empty()) {
+            auto existing = getMediaItemByImdbId(item.imdb_id);
+            if (existing) return existing->id;
+        }
+        auto fallbackResult = m_impl->client->executeQuery(oatpp::String("SELECT id AS value FROM media_items WHERE title = :title AND year = :year"), std::unordered_map<oatpp::String, oatpp::Void>{
+            {"title", oatpp::String(item.title)},
+            {"year", oatpp::Int32(item.year)}
+        });
+        if (fallbackResult->isSuccess()) {
+            auto dataset = fallbackResult->fetch<oatpp::Vector<oatpp::Object<IntResultDto>>>();
+            if (dataset && dataset->size() > 0 && dataset->front()->value) {
+                return *dataset->front()->value;
+            }
+        }
+        
         throw std::runtime_error("Failed to insert media item");
     }
 
