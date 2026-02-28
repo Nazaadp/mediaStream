@@ -115,7 +115,7 @@ public:
                     tinfo.info_hash = t.value("hash", "");
                     tinfo.magnet_uri = t.value("magnet_uri", "");
                     tinfo.quality = t.value("quality", "");
-                    tinfo.size_bytes = t.value("size_bytes", 0);
+                    tinfo.size_bytes = t.value("size_bytes", 0LL);
                     tinfo.seeders = t.value("seeders", 0);
                     tinfo.leechers = t.value("leechers", 0);
                     tinfo.source = "Discovery"; // Fallback
@@ -183,7 +183,7 @@ public:
                     tinfo.info_hash = t.value("hash", "");
                     tinfo.magnet_uri = t.value("magnet_uri", "");
                     tinfo.quality = t.value("quality", "");
-                    tinfo.size_bytes = t.value("size_bytes", 0);
+                    tinfo.size_bytes = t.value("size_bytes", 0LL);
                     tinfo.seeders = t.value("seeders", 0);
                     tinfo.leechers = t.value("leechers", 0);
                     tinfo.source = "Discovery";
