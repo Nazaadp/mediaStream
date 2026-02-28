@@ -351,6 +351,36 @@ public:
                 item.created_at = row->created_at ? *row->created_at : 0;
                 item.updated_at = row->updated_at ? *row->updated_at : 0;
                 return item;
+        return std::nullopt;
+    }
+
+    std::optional<MediaItem> Database::getMediaItemByTmdbId(const std::string& tmdb_id) {
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM media_items WHERE tmdb_id = :tmdb_id"), std::unordered_map<oatpp::String, oatpp::Void>{
+                {"tmdb_id", oatpp::String(tmdb_id)}
+            });
+
+        if (result->isSuccess()) {
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<MediaItemDto>>>();
+            if (dataset && dataset->size() > 0) {
+                auto row = dataset->front();
+                MediaItem item;
+                item.id = row->id ? *row->id : 0;
+                item.type = stringToContentType(row->type ? row->type->c_str() : "");
+                item.title = row->title ? row->title->c_str() : "";
+                item.original_title = row->original_title ? row->original_title->c_str() : "";
+                item.year = row->year ? *row->year : 0;
+                item.description = row->description ? row->description->c_str() : "";
+                item.poster_url = row->poster_url ? row->poster_url->c_str() : "";
+                item.backdrop_url = row->backdrop_url ? row->backdrop_url->c_str() : "";
+                item.rating = row->rating ? *row->rating : 0.0f;
+                item.genres = row->genres ? row->genres->c_str() : "";
+                item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
+                item.tmdb_id = row->tmdb_id ? row->tmdb_id->c_str() : "";
+                item.imdb_id = row->imdb_id ? row->imdb_id->c_str() : "";
+                item.language = row->language ? row->language->c_str() : "";
+                item.created_at = row->created_at ? *row->created_at : 0;
+                item.updated_at = row->updated_at ? *row->updated_at : 0;
+                return item;
             }
         }
         return std::nullopt;
