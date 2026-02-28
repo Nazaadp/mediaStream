@@ -58,6 +58,13 @@ class WatchHistoryDto : public oatpp::DTO {
     DTO_FIELD(Int32, completed);
 };
 
+class ViewLaterDto : public oatpp::DTO {
+    DTO_INIT(ViewLaterDto, DTO)
+    DTO_FIELD(Int32, id);
+    DTO_FIELD(Int32, media_id);
+    DTO_FIELD(Int64, created_at);
+};
+
 class EpisodeDto : public oatpp::DTO {
     DTO_INIT(EpisodeDto, DTO)
     DTO_FIELD(Int32, id);
@@ -219,6 +226,17 @@ public:
             )
         )");
 
+        // View Later Table
+        m_impl->executeSQL(R"(
+            CREATE TABLE IF NOT EXISTS view_later (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                media_id INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (media_id) REFERENCES media_items(id) ON DELETE CASCADE,
+                UNIQUE(media_id)
+            )
+        )");
+
         // Episodes Table (for Series/Anime)
         m_impl->executeSQL(R"(
             CREATE TABLE IF NOT EXISTS episodes (
@@ -240,10 +258,12 @@ public:
         // Create indexes for performance
         m_impl->executeSQL("CREATE INDEX IF NOT EXISTS idx_media_type ON media_items(type)");
         m_impl->executeSQL("CREATE INDEX IF NOT EXISTS idx_media_title ON media_items(title)");
+        m_impl->executeSQL("CREATE INDEX IF NOT EXISTS idx_media_tmdb ON media_items(tmdb_id)");
         m_impl->executeSQL("CREATE INDEX IF NOT EXISTS idx_torrents_hash ON torrents(info_hash)");
         m_impl->executeSQL("CREATE INDEX IF NOT EXISTS idx_torrents_media ON torrents(media_id)");
         m_impl->executeSQL("CREATE INDEX IF NOT EXISTS idx_torrents_status ON torrents(status)");
         m_impl->executeSQL("CREATE INDEX IF NOT EXISTS idx_watch_history_media ON watch_history(media_id)");
+        m_impl->executeSQL("CREATE INDEX IF NOT EXISTS idx_view_later_media ON view_later(media_id)");
         m_impl->executeSQL("CREATE INDEX IF NOT EXISTS idx_episodes_media ON episodes(media_id)");
 
         spdlog::info("Database schema created successfully");
@@ -289,6 +309,19 @@ public:
             }
         }
         throw std::runtime_error("Failed to insert media item");
+    }
+
+    int Database::upsertMediaItem(const MediaItem& item) {
+        if (!item.tmdb_id.empty()) {
+            auto existing = getMediaItemByTmdbId(item.tmdb_id);
+            if (existing) {
+                // Update specific fields or just return it if we only want to ensure it exists.
+                // For simplicity, we just return the existing ID.
+                return existing->id;
+            }
+        }
+        // If not found, insert
+        return insertMediaItem(item);
     }
 
     std::optional<MediaItem> Database::getMediaItem(int id) {
@@ -670,8 +703,110 @@ public:
         return histories;
     }
 
+    std::vector<MediaItem> Database::getWatchHistoryMedia(int limit) {
+        std::vector<MediaItem> items;
+        auto result = m_impl->client->executeQuery(oatpp::String(
+            "SELECT m.* FROM media_items m "
+            "JOIN watch_history w ON m.id = w.media_id "
+            "ORDER BY w.last_watched DESC LIMIT :limit"), 
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"limit", oatpp::Int32(limit)}
+            });
+
+        if (result->isSuccess()) {
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<MediaItemDto>>>();
+            if (dataset) {
+                for (auto& row : *dataset) {
+                    MediaItem item;
+                    item.id = row->id ? *row->id : 0;
+                    item.type = stringToContentType(row->type ? row->type->c_str() : "");
+                    item.title = row->title ? row->title->c_str() : "";
+                    item.original_title = row->original_title ? row->original_title->c_str() : "";
+                    item.year = row->year ? *row->year : 0;
+                    item.description = row->description ? row->description->c_str() : "";
+                    item.poster_url = row->poster_url ? row->poster_url->c_str() : "";
+                    item.backdrop_url = row->backdrop_url ? row->backdrop_url->c_str() : "";
+                    item.rating = row->rating ? *row->rating : 0.0f;
+                    item.genres = row->genres ? row->genres->c_str() : "";
+                    item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
+                    item.tmdb_id = row->tmdb_id ? row->tmdb_id->c_str() : "";
+                    item.imdb_id = row->imdb_id ? row->imdb_id->c_str() : "";
+                    item.language = row->language ? row->language->c_str() : "";
+                    item.created_at = row->created_at ? *row->created_at : 0;
+                    item.updated_at = row->updated_at ? *row->updated_at : 0;
+                    items.push_back(item);
+                }
+            }
+        }
+        return items;
+    }
+
     void Database::deleteWatchHistory(int media_id) {
         m_impl->client->executeQuery(oatpp::String("DELETE FROM watch_history WHERE media_id = :media_id"), std::unordered_map<oatpp::String, oatpp::Void>{{"media_id", oatpp::Int32(media_id)}});
+    }
+
+    // View Later
+    void Database::toggleViewLater(int media_id, bool saved) {
+        if (saved) {
+            auto now = std::chrono::system_clock::now().time_since_epoch().count();
+            m_impl->client->executeQuery(oatpp::String("INSERT OR IGNORE INTO view_later (media_id, created_at) VALUES (:media_id, :created_at)"), 
+                std::unordered_map<oatpp::String, oatpp::Void>{
+                    {"media_id", oatpp::Int32(media_id)},
+                    {"created_at", oatpp::Int64(now)}
+                });
+        } else {
+            m_impl->client->executeQuery(oatpp::String("DELETE FROM view_later WHERE media_id = :media_id"), 
+                std::unordered_map<oatpp::String, oatpp::Void>{{"media_id", oatpp::Int32(media_id)}});
+        }
+    }
+
+    bool Database::isViewLater(int media_id) {
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT COUNT(*) AS value FROM view_later WHERE media_id = :media_id"), 
+            std::unordered_map<oatpp::String, oatpp::Void>{{"media_id", oatpp::Int32(media_id)}});
+        
+        if (result->isSuccess()) {
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<IntResultDto>>>();
+            if (dataset && dataset->size() > 0) return (dataset->front()->value ? *dataset->front()->value : 0) > 0;
+        }
+        return false;
+    }
+
+    std::vector<MediaItem> Database::getViewLaterMedia(int limit) {
+        std::vector<MediaItem> items;
+        auto result = m_impl->client->executeQuery(oatpp::String(
+            "SELECT m.* FROM media_items m "
+            "JOIN view_later v ON m.id = v.media_id "
+            "ORDER BY v.created_at DESC LIMIT :limit"), 
+            std::unordered_map<oatpp::String, oatpp::Void>{
+                {"limit", oatpp::Int32(limit)}
+            });
+
+        if (result->isSuccess()) {
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<MediaItemDto>>>();
+            if (dataset) {
+                for (auto& row : *dataset) {
+                    MediaItem item;
+                    item.id = row->id ? *row->id : 0;
+                    item.type = stringToContentType(row->type ? row->type->c_str() : "");
+                    item.title = row->title ? row->title->c_str() : "";
+                    item.original_title = row->original_title ? row->original_title->c_str() : "";
+                    item.year = row->year ? *row->year : 0;
+                    item.description = row->description ? row->description->c_str() : "";
+                    item.poster_url = row->poster_url ? row->poster_url->c_str() : "";
+                    item.backdrop_url = row->backdrop_url ? row->backdrop_url->c_str() : "";
+                    item.rating = row->rating ? *row->rating : 0.0f;
+                    item.genres = row->genres ? row->genres->c_str() : "";
+                    item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
+                    item.tmdb_id = row->tmdb_id ? row->tmdb_id->c_str() : "";
+                    item.imdb_id = row->imdb_id ? row->imdb_id->c_str() : "";
+                    item.language = row->language ? row->language->c_str() : "";
+                    item.created_at = row->created_at ? *row->created_at : 0;
+                    item.updated_at = row->updated_at ? *row->updated_at : 0;
+                    items.push_back(item);
+                }
+            }
+        }
+        return items;
     }
 
     // Episodes

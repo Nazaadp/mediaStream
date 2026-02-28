@@ -14,6 +14,7 @@
 #include "mediastream/core/TorrentEngine.hpp"
 #include "mediastream/services/ContentDiscovery.hpp"
 #include "mediastream/api/HttpServer.hpp"
+#include "mediastream/database/Database.hpp"
 
 // Platform specific (Linux) for User ID checks
 #if defined(__linux__)
@@ -77,20 +78,25 @@ int main() {
     // Wrap in try-catch to prevent "terminate called without an active exception" crashes.
     try {
 
-        // 1. The Core (Domain)
+        // 1. The Database
+        spdlog::info("Booting Database...");
+        auto db = std::make_shared<media::database::Database>("./media.db");
+        db->initialize();
+
+        // 2. The Core (Domain)
         spdlog::info("Booting Core...");
         auto engine = std::make_shared<media::core::TorrentEngine>("./downloads");
 
-        // 2. The Services
+        // 3. The Services
         spdlog::info("Booting Services...");
         auto discovery = std::make_shared<media::services::ContentDiscoveryManager>();
 
-        // 3. The API (Interface)
+        // 4. The API (Interface)
         spdlog::info("Booting API...");
-        media::api::HttpServer api_server(engine, discovery);
+        media::api::HttpServer api_server(engine, discovery, db);
         api_server.start();
 
-        // 3. The Keep-Alive Loop
+        // 5. The Keep-Alive Loop
         spdlog::info("System Online.");
         while (g_keep_running) {
             std::this_thread::sleep_for(std::chrono::seconds(1));

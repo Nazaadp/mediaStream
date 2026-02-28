@@ -99,7 +99,9 @@ namespace media::database {
 
         // Media Items
         int insertMediaItem(const MediaItem& item);
+        int upsertMediaItem(const MediaItem& item);
         std::optional<MediaItem> getMediaItem(int id);
+        std::optional<MediaItem> getMediaItemByTmdbId(const std::string& tmdb_id);
         std::vector<MediaItem> getAllMedia(ContentType type);
         std::vector<MediaItem> searchMedia(const std::string& query, ContentType type);
         void updateMediaItem(const MediaItem& item);
@@ -119,7 +121,13 @@ namespace media::database {
         void upsertWatchHistory(const WatchHistory& history);
         std::optional<WatchHistory> getWatchHistory(int media_id);
         std::vector<WatchHistory> getRecentlyWatched(int limit = 20);
+        std::vector<MediaItem> getWatchHistoryMedia(int limit = 50);
         void deleteWatchHistory(int media_id);
+
+        // View Later
+        void toggleViewLater(int media_id, bool saved);
+        bool isViewLater(int media_id);
+        std::vector<MediaItem> getViewLaterMedia(int limit = 50);
 
         // Episodes (for Series)
         int insertEpisode(const Episode& episode);
