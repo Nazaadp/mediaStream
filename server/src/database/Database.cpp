@@ -292,8 +292,8 @@ public:
                 {"rating", oatpp::Float32(item.rating)},
                 {"genres", oatpp::String(item.genres)},
                 {"runtime_minutes", oatpp::Int32(item.runtime_minutes)},
-                {"tmdb_id", oatpp::String(item.tmdb_id)},
-                {"imdb_id", oatpp::String(item.imdb_id)},
+                {"tmdb_id", item.tmdb_id.empty() ? oatpp::String() : oatpp::String(item.tmdb_id)},
+                {"imdb_id", item.imdb_id.empty() ? oatpp::String() : oatpp::String(item.imdb_id)},
                 {"language", oatpp::String(item.language)},
                 {"created_at", oatpp::Int64(now)},
                 {"updated_at", oatpp::Int64(now)}
@@ -314,12 +314,25 @@ public:
     int Database::upsertMediaItem(const MediaItem& item) {
         if (!item.tmdb_id.empty()) {
             auto existing = getMediaItemByTmdbId(item.tmdb_id);
-            if (existing) {
-                // Update specific fields or just return it if we only want to ensure it exists.
-                // For simplicity, we just return the existing ID.
-                return existing->id;
+            if (existing) return existing->id;
+        }
+        if (!item.imdb_id.empty()) {
+            auto existing = getMediaItemByImdbId(item.imdb_id);
+            if (existing) return existing->id;
+        }
+
+        // Also fallback to checking Title AND Year as a last resort UNIQUE check
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT id FROM media_items WHERE title = :title AND year = :year"), std::unordered_map<oatpp::String, oatpp::Void>{
+            {"title", oatpp::String(item.title)},
+            {"year", oatpp::Int32(item.year)}
+        });
+        if (result->isSuccess()) {
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<IntResultDto>>>();
+            if (dataset && dataset->size() > 0) {
+                return dataset->front()->value ? *dataset->front()->value : 0;
             }
         }
+
         // If not found, insert
         return insertMediaItem(item);
     }
@@ -359,6 +372,38 @@ public:
     std::optional<MediaItem> Database::getMediaItemByTmdbId(const std::string& tmdb_id) {
         auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM media_items WHERE tmdb_id = :tmdb_id"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"tmdb_id", oatpp::String(tmdb_id)}
+            });
+
+        if (result->isSuccess()) {
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<MediaItemDto>>>();
+            if (dataset && dataset->size() > 0) {
+                auto row = dataset->front();
+                MediaItem item;
+                item.id = row->id ? *row->id : 0;
+                item.type = stringToContentType(row->type ? row->type->c_str() : "");
+                item.title = row->title ? row->title->c_str() : "";
+                item.original_title = row->original_title ? row->original_title->c_str() : "";
+                item.year = row->year ? *row->year : 0;
+                item.description = row->description ? row->description->c_str() : "";
+                item.poster_url = row->poster_url ? row->poster_url->c_str() : "";
+                item.backdrop_url = row->backdrop_url ? row->backdrop_url->c_str() : "";
+                item.rating = row->rating ? *row->rating : 0.0f;
+                item.genres = row->genres ? row->genres->c_str() : "";
+                item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
+                item.tmdb_id = row->tmdb_id ? row->tmdb_id->c_str() : "";
+                item.imdb_id = row->imdb_id ? row->imdb_id->c_str() : "";
+                item.language = row->language ? row->language->c_str() : "";
+                item.created_at = row->created_at ? *row->created_at : 0;
+                item.updated_at = row->updated_at ? *row->updated_at : 0;
+                return item;
+            }
+        }
+        return std::nullopt;
+    }
+
+    std::optional<MediaItem> Database::getMediaItemByImdbId(const std::string& imdb_id) {
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM media_items WHERE imdb_id = :imdb_id"), std::unordered_map<oatpp::String, oatpp::Void>{
+                {"imdb_id", oatpp::String(imdb_id)}
             });
 
         if (result->isSuccess()) {
