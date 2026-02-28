@@ -55,7 +55,8 @@
     let selectedSeason = 1;
     let selectedEpisode = 1;
 
-    $: isMovie = item.source === "YTS" || item.type === "movie";
+    $: isMovie =
+        item.source === "YTS" || item.type === "movie" || item.type === "MOVIE";
 
     // Helper for SVG circle dash array math (circumference is ~88 for r=14)
     function getDashOffset(progress) {
@@ -70,12 +71,31 @@
                 media: item,
                 saved: isViewLater,
             };
+
+            // Instantly update sessionStorage so the Home feed updates when modal closes
+            try {
+                const stored = sessionStorage.getItem("viewLaterCache");
+                let list = stored ? JSON.parse(stored) : [];
+                if (isViewLater) {
+                    list.unshift(item);
+                } else {
+                    list = list.filter(
+                        (m) =>
+                            m.id !== item.id &&
+                            (m.tmdb_id !== item.tmdb_id || !m.tmdb_id) &&
+                            m.title !== item.title,
+                    );
+                }
+                sessionStorage.setItem("viewLaterCache", JSON.stringify(list));
+            } catch (e) {
+                console.error("Cache update failed", e);
+            }
+
             await fetch("https://192.168.1.37:443/api/v1/user/viewlater", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
             });
-            // We just let the home page re-fetch and update cache on next reload.
         } catch (e) {
             console.error("Failed to save view later", e);
             isViewLater = !isViewLater; // revert on fail
@@ -181,7 +201,11 @@
                                 <span class="quality">{t.quality}</span>
                                 <span class="type">{t.type}</span>
                                 <span class="size"
-                                    >{(t.size_bytes / 1024 / 1024).toFixed(0)} MB</span
+                                    >{(
+                                        Math.max(0, t.size_bytes) /
+                                        1024 /
+                                        1024
+                                    ).toFixed(0)} MB</span
                                 >
                                 <span class="peers">
                                     <span class="seeders">↑ {t.seeders}</span>
