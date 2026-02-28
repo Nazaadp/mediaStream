@@ -351,6 +351,8 @@ public:
                 item.created_at = row->created_at ? *row->created_at : 0;
                 item.updated_at = row->updated_at ? *row->updated_at : 0;
                 return item;
+            }
+        }
         return std::nullopt;
     }
 
