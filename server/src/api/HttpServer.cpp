@@ -2,6 +2,7 @@
 #include "mediastream/api/TorrentController.hpp"
 #include "mediastream/api/StreamController.hpp"
 #include "mediastream/api/DiscoveryController.hpp"
+#include "mediastream/api/UserController.hpp"
 #include "mediastream/services/ContentDiscovery.hpp"
 
 // Oat++ Headers
@@ -19,8 +20,9 @@
 namespace media::api {
 
     HttpServer::HttpServer(std::shared_ptr<media::core::TorrentEngine> engine,
-                           std::shared_ptr<media::services::ContentDiscoveryManager> discovery)
-        : m_engine(engine), m_discovery(discovery), m_should_run(false) 
+                           std::shared_ptr<media::services::ContentDiscoveryManager> discovery,
+                           std::shared_ptr<media::database::Database> db)
+        : m_engine(engine), m_discovery(discovery), m_db(db), m_should_run(false) 
     {}
 
     HttpServer::~HttpServer() {
@@ -88,6 +90,9 @@ namespace media::api {
 
             auto discoveryController = std::make_shared<DiscoveryController>(objectMapper, m_discovery);
             router->addController(discoveryController);
+
+            auto userController = std::make_shared<UserController>(objectMapper, m_db);
+            router->addController(userController);
 
             // 2. Swagger Disabled (Bypassing version conflict)
             // We will verify the API using raw CURL commands instead.
