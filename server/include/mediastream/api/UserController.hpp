@@ -92,7 +92,7 @@ public:
              BODY_STRING(String, body)) 
     {
         try {
-            auto j = nlohmann::json::parse(body->std_str());
+            auto j = nlohmann::json::parse(body->c_str());
             if (!j.contains("media")) {
                 return createResponse(Status::CODE_400, "Missing media object");
             }
@@ -165,7 +165,7 @@ public:
              BODY_STRING(String, body)) 
     {
         try {
-            auto j = nlohmann::json::parse(body->std_str());
+            auto j = nlohmann::json::parse(body->c_str());
             if (!j.contains("media")) {
                 return createResponse(Status::CODE_400, "Missing media object");
             }
