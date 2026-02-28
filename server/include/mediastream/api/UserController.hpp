@@ -195,7 +195,11 @@ public:
                 }
             }
 
-            bool saved = j.value("saved", true);
+            bool saved = true;
+            if (j.contains("saved") && j["saved"].is_boolean()) {
+                saved = j["saved"].get<bool>();
+            }
+            spdlog::info("Toggling ViewLater for media_id {} to {}", media_id, saved);
             m_db->toggleViewLater(media_id, saved);
 
             auto response = createResponse(Status::CODE_200, "{\"success\":true}");
