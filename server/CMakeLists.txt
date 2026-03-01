@@ -23,6 +23,7 @@ find_package(fmt REQUIRED)
 find_package(oatpp REQUIRED)
 find_package(oatpp-swagger REQUIRED)
 find_package(oatpp-sqlite REQUIRED)
+find_package(oatpp-websocket REQUIRED)
 find_package(CURL REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(SQLite3 REQUIRED)
@@ -54,6 +55,7 @@ target_link_libraries(MediaCore PUBLIC
     nlohmann_json::nlohmann_json
     oatpp::oatpp
     oatpp::oatpp-sqlite
+    oatpp::oatpp-websocket
     SQLite::SQLite3
 )
 
@@ -70,6 +72,7 @@ target_link_libraries(mediastream_server PRIVATE
     oatpp::oatpp             # Main/HttpServer
     oatpp::oatpp-swagger     # Swagger UI
     oatpp::oatpp-sqlite      # Database
+    oatpp::oatpp-websocket   # WebSockets
 )
 
 # 5. Compiler Flags
