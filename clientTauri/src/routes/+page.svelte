@@ -99,6 +99,14 @@
     function closeMediaCard() {
         selectedMedia = null;
         document.body.style.overflow = "auto";
+        // Immediately sync changes made in the modal back into the reactive lists
+        try {
+            let vlCache = sessionStorage.getItem("viewLaterCache");
+            if (vlCache) watchLater = JSON.parse(vlCache);
+
+            let histCache = sessionStorage.getItem("historyCache");
+            if (histCache) history = JSON.parse(histCache);
+        } catch (e) {}
     }
 
     function scrollRow(event, direction) {
