@@ -14,64 +14,70 @@
     // UI State
     let isReadyToPlay = false; // True when backend has the file created
     let isBuffering = true; // True while waiting for video to load or buffering
-    let isPlaying = false;
     let error = null;
 
+    // Player State
+    let currentTime = 0;
+    let duration = 0;
+    let isPaused = false;
+    let volume = 1;
+    let isMuted = false;
+    let isControlsVisible = true;
+    let controlsTimeout = null;
+
     // Torrent State
-    let statusInterval;
+    let ws;
     let torrentProgress = 0;
     let torrentState = "Connecting to peers...";
 
-    onMount(() => {
-        console.log("Started Video Player component for hash:", infoHash);
+    function connectWebSocket() {
+        ws = new WebSocket("wss://192.168.1.37:443/api/v1/ws/status");
 
-        // Poll the backend for torrent status every 1.5 seconds
-        statusInterval = setInterval(async () => {
+        ws.onopen = () => {
+            console.log("WebSocket connected for status updates");
+        };
+
+        ws.onmessage = (event) => {
             try {
-                const res = await fetch(
-                    "https://192.168.1.37:443/api/v1/status",
+                const statusList = JSON.parse(event.data);
+                const myTorrent = statusList.find(
+                    (t) => t.info_hash.toLowerCase() === infoHash.toLowerCase(),
                 );
-                if (res.ok) {
-                    const statusList = await res.json();
 
-                    const myTorrent = statusList.find(
-                        (t) =>
-                            t.info_hash.toLowerCase() ===
-                            infoHash.toLowerCase(),
-                    );
+                if (myTorrent) {
+                    torrentProgress = myTorrent.progress;
+                    torrentState = myTorrent.state;
 
-                    if (myTorrent) {
-                        torrentProgress = myTorrent.progress;
-                        torrentState = myTorrent.state;
-
-                        // Only log periodically if not full to avoid spam, or just log once it updates
-                        //console.log("progress: ", torrentProgress, "state: " , torrentState);
-
-                        // If progress > 0, it means it finished downloading metadata
-                        // and has started writing file pieces to disk.
-                        if (torrentProgress > 0.05 && !isReadyToPlay) {
-                            console.log(
-                                "Torrent is ready! Initializing stream.",
-                                "progress: ",
-                                torrentProgress,
-                            );
-                            isReadyToPlay = true;
-                        }
-                    } else {
-                        console.warn(
-                            "Torrent not found in backend status loop! Target Hash:",
-                            infoHash,
-                        );
+                    if (torrentProgress > 0.05 && !isReadyToPlay) {
                         console.log(
-                            "Backend provided hashes:",
-                            statusList.map((t) => t.info_hash),
+                            "Torrent is ready! Initializing stream.",
+                            "progress: ",
+                            torrentProgress,
                         );
+                        isReadyToPlay = true;
                     }
+                } else {
+                    console.warn(
+                        "Torrent not found in backend status loop! Target Hash:",
+                        infoHash,
+                    );
                 }
             } catch (e) {
-                console.warn("Status fetch failed", e);
+                console.warn("Status parse failed", e);
             }
-        }, 1500);
+        };
+
+        ws.onclose = () => {
+            if (!isReadyToPlay) {
+                console.log("WebSocket closed prematurely, reconnecting...");
+                setTimeout(connectWebSocket, 2000);
+            }
+        };
+    }
+
+    onMount(() => {
+        console.log("Started Video Player component for hash:", infoHash);
+        connectWebSocket();
     });
 
     async function saveWatchHistory() {
@@ -161,7 +167,7 @@
     }
 
     onDestroy(() => {
-        if (statusInterval) clearInterval(statusInterval);
+        if (ws) ws.close();
         saveWatchHistory();
     });
 
@@ -176,11 +182,38 @@
 
     function handleVideoPlaying() {
         isBuffering = false;
-        isPlaying = true;
     }
 
     function handleVideoPause() {
-        isPlaying = false;
+        // Handled by bind:paused
+    }
+
+    function showControls() {
+        isControlsVisible = true;
+        clearTimeout(controlsTimeout);
+        controlsTimeout = setTimeout(() => {
+            if (!isPaused) isControlsVisible = false;
+        }, 3000);
+    }
+
+    function togglePlay() {
+        if (!videoElement) return;
+        if (isPaused) videoElement.play();
+        else videoElement.pause();
+    }
+
+    function toggleMute() {
+        isMuted = !isMuted;
+    }
+
+    function formatTime(secs) {
+        if (isNaN(secs) || secs < 0) return "00:00";
+        const h = Math.floor(secs / 3600);
+        const m = Math.floor((secs % 3600) / 60);
+        const s = Math.floor(secs % 60);
+        return h > 0
+            ? `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+            : `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
     }
 
     function handleVideoError(e) {
@@ -198,9 +231,14 @@
     }
 </script>
 
-<div class="player-container">
+<!-- svelte-ignore a11y-no-static-element-interactions -->
+<div
+    class="player-container"
+    on:mousemove={showControls}
+    on:mouseleave={() => (isControlsVisible = false)}
+>
     <!-- Top Bar -->
-    <div class="top-bar">
+    <div class="top-bar" class:hidden={!isControlsVisible && !isPaused}>
         <button class="back-btn" on:click={goBack}>
             <svg
                 xmlns="http://www.w3.org/2005/svg"
@@ -229,20 +267,155 @@
 
     <!-- Video Element -->
     <!-- svelte-ignore a11y-media-has-caption -->
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
     <video
         bind:this={videoElement}
+        bind:currentTime
+        bind:duration
+        bind:paused={isPaused}
+        bind:volume
+        bind:muted={isMuted}
         src={videoSrc}
-        controls
         autoplay
         crossorigin="anonymous"
         on:waiting={handleVideoWaiting}
         on:playing={handleVideoPlaying}
-        on:pause={handleVideoPause}
+        on:click={togglePlay}
         on:error={handleVideoError}
         class="media-video"
     >
         Your browser does not support HTML5 video.
     </video>
+
+    <!-- Bottom Controls Overlay -->
+    <div
+        class="controls-overlay"
+        class:hidden={!isControlsVisible && !isPaused}
+    >
+        <!-- Timeline -->
+        <div class="timeline-container">
+            <span class="time-read">{formatTime(currentTime)}</span>
+            <input
+                type="range"
+                class="timeline-slider"
+                min="0"
+                max={duration || 1}
+                bind:value={currentTime}
+                on:mousedown={() => {
+                    if (!isPaused && videoElement) videoElement.pause();
+                }}
+                on:mouseup={() => {
+                    if (isPaused && videoElement) videoElement.play();
+                }}
+                on:input={() => {
+                    if (videoElement) videoElement.currentTime = currentTime;
+                }}
+            />
+            <span class="time-read">{formatTime(duration)}</span>
+        </div>
+
+        <div class="controls-row">
+            <div class="controls-left">
+                <!-- Play/Pause -->
+                <button class="control-btn" on:click={togglePlay}>
+                    {#if isPaused}
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            width="28"
+                            height="28"
+                        >
+                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                        </svg>
+                    {:else}
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            width="28"
+                            height="28"
+                        >
+                            <rect x="6" y="4" width="4" height="16"></rect>
+                            <rect x="14" y="4" width="4" height="16"></rect>
+                        </svg>
+                    {/if}
+                </button>
+
+                <!-- Volume Control -->
+                <div class="volume-group">
+                    <button class="control-btn" on:click={toggleMute}>
+                        {#if isMuted || volume === 0}
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                width="24"
+                                height="24"
+                            >
+                                <polygon
+                                    points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"
+                                ></polygon>
+                                <line x1="23" y1="9" x2="17" y2="15"
+                                ></line><line x1="17" y1="9" x2="23" y2="15"
+                                ></line>
+                            </svg>
+                        {:else}
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                width="24"
+                                height="24"
+                            >
+                                <polygon
+                                    points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"
+                                ></polygon>
+                                <path
+                                    d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"
+                                ></path>
+                            </svg>
+                        {/if}
+                    </button>
+                    <input
+                        type="range"
+                        class="volume-slider"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        bind:value={volume}
+                    />
+                </div>
+            </div>
+
+            <div class="controls-right">
+                <!-- Subtitles Button Dummy -->
+                <button class="control-btn config-btn">
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        width="22"
+                        height="22"
+                    >
+                        <path
+                            d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+                        ></path>
+                        <line x1="9" y1="9" x2="15" y2="9"></line>
+                        <line x1="9" y1="13" x2="11" y2="13"></line>
+                    </svg>
+                    <span>Subtitles</span>
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- Overlays -->
     {#if !isReadyToPlay || (isBuffering && !error)}
@@ -376,5 +549,119 @@
         100% {
             transform: rotate(360deg);
         }
+    }
+
+    /* --- Custom Player Controls --- */
+    .hidden {
+        opacity: 0 !important;
+        pointer-events: none;
+    }
+
+    .controls-overlay {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        padding: var(--spacing-xxl) var(--spacing-xl) var(--spacing-xl)
+            var(--spacing-xl);
+        background: linear-gradient(
+            0deg,
+            rgba(0, 0, 0, 0.9) 0%,
+            transparent 100%
+        );
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-md);
+        z-index: 2010;
+        transition: opacity var(--transition-normal);
+    }
+
+    .timeline-container {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-md);
+        width: 100%;
+    }
+
+    .time-read {
+        font-family: monospace;
+        font-size: 0.95rem;
+        color: #ddd;
+        min-width: 60px;
+        text-align: center;
+    }
+
+    .timeline-slider {
+        flex: 1;
+        cursor: pointer;
+        height: 6px;
+        border-radius: 3px;
+        accent-color: var(--accent-color);
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    .controls-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+    }
+
+    .controls-left,
+    .controls-right {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-lg);
+    }
+
+    .control-btn {
+        background: transparent;
+        border: none;
+        color: white;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px;
+        border-radius: 50%;
+        transition: all var(--transition-fast);
+        opacity: 0.8;
+    }
+
+    .control-btn:hover {
+        opacity: 1;
+        background: rgba(255, 255, 255, 0.15);
+        transform: scale(1.1);
+    }
+
+    .volume-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .volume-slider {
+        width: 80px;
+        cursor: pointer;
+        accent-color: white;
+        height: 4px;
+        opacity: 0;
+        transition: opacity var(--transition-fast);
+    }
+
+    .volume-group:hover .volume-slider {
+        opacity: 1;
+    }
+
+    .config-btn {
+        border-radius: var(--border-radius-sm);
+        padding: 8px 16px;
+        gap: 8px;
+        font-weight: 500;
+        font-size: 0.9rem;
+    }
+
+    .config-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
     }
 </style>
