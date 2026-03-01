@@ -34,6 +34,7 @@ private:
             root["imdb_id"] = m.imdb_id;
             root["tmdb_id"] = m.tmdb_id;
             root["language"] = m.language;
+            root["type"] = media::database::contentTypeToString(m.type);
             
             // Add view_later and specific watch history data if needed, 
             // for now, just pushing the media item.
@@ -44,6 +45,8 @@ private:
             for (const auto& t : torrents) {
                 nlohmann::json tj;
                 tj["quality"] = t.quality;
+                tj["type"] = t.type;
+                tj["source"] = t.source;
                 tj["size_bytes"] = t.size_bytes;
                 tj["hash"] = t.info_hash;
                 tj["magnet_uri"] = t.magnet_uri;
@@ -115,10 +118,11 @@ public:
                     tinfo.info_hash = t.value("hash", "");
                     tinfo.magnet_uri = t.value("magnet_uri", "");
                     tinfo.quality = t.value("quality", "");
+                    tinfo.type = t.value("type", "");
                     tinfo.size_bytes = t.value("size_bytes", 0LL);
                     tinfo.seeders = t.value("seeders", 0);
                     tinfo.leechers = t.value("leechers", 0);
-                    tinfo.source = "Discovery"; // Fallback
+                    tinfo.source = t.value("source", "Discovery"); // Fallback
                     tinfo.status = media::database::DownloadStatus::PENDING;
                     
                     try {
@@ -183,10 +187,11 @@ public:
                     tinfo.info_hash = t.value("hash", "");
                     tinfo.magnet_uri = t.value("magnet_uri", "");
                     tinfo.quality = t.value("quality", "");
+                    tinfo.type = t.value("type", "");
                     tinfo.size_bytes = t.value("size_bytes", 0LL);
                     tinfo.seeders = t.value("seeders", 0);
                     tinfo.leechers = t.value("leechers", 0);
-                    tinfo.source = "Discovery";
+                    tinfo.source = t.value("source", "Discovery");
                     tinfo.status = media::database::DownloadStatus::PENDING;
                     
                     try {

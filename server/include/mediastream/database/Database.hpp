@@ -52,6 +52,7 @@ namespace media::database {
         std::string info_hash;
         std::string magnet_uri;
         std::string quality;  // 720p, 1080p, 4K, etc.
+        std::string type;     // bluray, web, etc.
         int64_t size_bytes;
         int seeders;
         int leechers;

@@ -36,6 +36,7 @@ class TorrentInfoDto : public oatpp::DTO {
     DTO_FIELD(String, info_hash);
     DTO_FIELD(String, magnet_uri);
     DTO_FIELD(String, quality);
+    DTO_FIELD(String, type);
     DTO_FIELD(Int64, size_bytes);
     DTO_FIELD(Int32, seeders);
     DTO_FIELD(Int32, leechers);
@@ -198,6 +199,7 @@ public:
                 info_hash TEXT UNIQUE NOT NULL,
                 magnet_uri TEXT NOT NULL,
                 quality TEXT,
+                type TEXT,
                 size_bytes INTEGER DEFAULT 0,
                 seeders INTEGER DEFAULT 0,
                 leechers INTEGER DEFAULT 0,
@@ -265,6 +267,13 @@ public:
         m_impl->executeSQL("CREATE INDEX IF NOT EXISTS idx_watch_history_media ON watch_history(media_id)");
         m_impl->executeSQL("CREATE INDEX IF NOT EXISTS idx_view_later_media ON view_later(media_id)");
         m_impl->executeSQL("CREATE INDEX IF NOT EXISTS idx_episodes_media ON episodes(media_id)");
+
+        // Try to add the 'type' column to torrents table if it already exists (migration)
+        try {
+            m_impl->executeSQL("ALTER TABLE torrents ADD COLUMN type TEXT");
+        } catch (...) {
+            // Safe to ignore, column already exists
+        }
 
         spdlog::info("Database schema created successfully");
     }
@@ -556,14 +565,15 @@ public:
     int Database::insertTorrent(const TorrentInfo& torrent) {
         auto now = std::chrono::system_clock::now().time_since_epoch().count();
         
-        auto result = m_impl->client->executeQuery(oatpp::String("INSERT INTO torrents (media_id, info_hash, magnet_uri, quality, size_bytes, seeders, "
+        auto result = m_impl->client->executeQuery(oatpp::String("INSERT INTO torrents (media_id, info_hash, magnet_uri, quality, type, size_bytes, seeders, "
             "leechers, source, status, progress, file_path, created_at, updated_at) "
-            "VALUES (:media_id, :info_hash, :magnet_uri, :quality, :size_bytes, :seeders, "
+            "VALUES (:media_id, :info_hash, :magnet_uri, :quality, :type, :size_bytes, :seeders, "
             ":leechers, :source, :status, :progress, :file_path, :created_at, :updated_at)"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"media_id", oatpp::Int32(torrent.media_id)},
                 {"info_hash", oatpp::String(torrent.info_hash)},
                 {"magnet_uri", oatpp::String(torrent.magnet_uri)},
                 {"quality", oatpp::String(torrent.quality)},
+                {"type", oatpp::String(torrent.type)},
                 {"size_bytes", oatpp::Int64(torrent.size_bytes)},
                 {"seeders", oatpp::Int32(torrent.seeders)},
                 {"leechers", oatpp::Int32(torrent.leechers)},
@@ -602,6 +612,7 @@ public:
                 torrent.info_hash = row->info_hash ? row->info_hash->c_str() : "";
                 torrent.magnet_uri = row->magnet_uri ? row->magnet_uri->c_str() : "";
                 torrent.quality = row->quality ? row->quality->c_str() : "";
+                torrent.type = row->type ? row->type->c_str() : "";
                 torrent.size_bytes = row->size_bytes ? *row->size_bytes : 0;
                 torrent.seeders = row->seeders ? *row->seeders : 0;
                 torrent.leechers = row->leechers ? *row->leechers : 0;
@@ -632,6 +643,7 @@ public:
                 torrent.info_hash = row->info_hash ? row->info_hash->c_str() : "";
                 torrent.magnet_uri = row->magnet_uri ? row->magnet_uri->c_str() : "";
                 torrent.quality = row->quality ? row->quality->c_str() : "";
+                torrent.type = row->type ? row->type->c_str() : "";
                 torrent.size_bytes = row->size_bytes ? *row->size_bytes : 0;
                 torrent.seeders = row->seeders ? *row->seeders : 0;
                 torrent.leechers = row->leechers ? *row->leechers : 0;
@@ -663,6 +675,7 @@ public:
                     torrent.info_hash = row->info_hash ? row->info_hash->c_str() : "";
                     torrent.magnet_uri = row->magnet_uri ? row->magnet_uri->c_str() : "";
                     torrent.quality = row->quality ? row->quality->c_str() : "";
+                    torrent.type = row->type ? row->type->c_str() : "";
                     torrent.size_bytes = row->size_bytes ? *row->size_bytes : 0;
                     torrent.seeders = row->seeders ? *row->seeders : 0;
                     torrent.leechers = row->leechers ? *row->leechers : 0;
@@ -693,6 +706,7 @@ public:
                     torrent.info_hash = row->info_hash ? row->info_hash->c_str() : "";
                     torrent.magnet_uri = row->magnet_uri ? row->magnet_uri->c_str() : "";
                     torrent.quality = row->quality ? row->quality->c_str() : "";
+                    torrent.type = row->type ? row->type->c_str() : "";
                     torrent.size_bytes = row->size_bytes ? *row->size_bytes : 0;
                     torrent.seeders = row->seeders ? *row->seeders : 0;
                     torrent.leechers = row->leechers ? *row->leechers : 0;
