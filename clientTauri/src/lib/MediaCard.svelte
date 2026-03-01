@@ -37,12 +37,16 @@
             const stored = sessionStorage.getItem("viewLaterCache");
             if (stored) {
                 const list = JSON.parse(stored);
-                isViewLater = list.some(
-                    (m) =>
-                        m.id === item.id ||
-                        (m.tmdb_id && m.tmdb_id === item.tmdb_id) ||
-                        m.title === item.title,
-                );
+                isViewLater = list.some((m) => {
+                    if (m.id && item.id && m.id === item.id) return true;
+                    if (m.tmdb_id && item.tmdb_id && m.tmdb_id === item.tmdb_id)
+                        return true;
+                    if (m.imdb_id && item.imdb_id && m.imdb_id === item.imdb_id)
+                        return true;
+                    if (m.title && item.title && m.title === item.title)
+                        return true;
+                    return false;
+                });
             }
         } catch (e) {}
     });
@@ -79,12 +83,24 @@
                 if (isViewLater) {
                     list.unshift(item);
                 } else {
-                    list = list.filter(
-                        (m) =>
-                            m.id !== item.id &&
-                            (m.tmdb_id !== item.tmdb_id || !m.tmdb_id) &&
-                            m.title !== item.title,
-                    );
+                    list = list.filter((m) => {
+                        if (m.id && item.id && m.id === item.id) return false;
+                        if (
+                            m.tmdb_id &&
+                            item.tmdb_id &&
+                            m.tmdb_id === item.tmdb_id
+                        )
+                            return false;
+                        if (
+                            m.imdb_id &&
+                            item.imdb_id &&
+                            m.imdb_id === item.imdb_id
+                        )
+                            return false;
+                        if (m.title && item.title && m.title === item.title)
+                            return false;
+                        return true;
+                    });
                 }
                 sessionStorage.setItem("viewLaterCache", JSON.stringify(list));
             } catch (e) {
