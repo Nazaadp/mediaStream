@@ -15,6 +15,9 @@ namespace media::database {
         ANIME
     };
 
+    std::string contentTypeToString(ContentType type);
+    ContentType stringToContentType(const std::string& str);
+
     // Download Status
     enum class DownloadStatus {
         PENDING,
