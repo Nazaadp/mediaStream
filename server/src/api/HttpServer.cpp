@@ -3,6 +3,7 @@
 #include "mediastream/api/StreamController.hpp"
 #include "mediastream/api/DiscoveryController.hpp"
 #include "mediastream/api/UserController.hpp"
+#include "mediastream/api/WebSocketController.hpp"
 #include "mediastream/services/ContentDiscovery.hpp"
 
 // Oat++ Headers
@@ -11,6 +12,7 @@
 #include "oatpp/web/server/HttpConnectionHandler.hpp"
 #include "oatpp/web/server/interceptor/ResponseInterceptor.hpp"
 #include "oatpp/parser/json/mapping/ObjectMapper.hpp"
+#include "oatpp-websocket/ConnectionHandler.hpp"
 
 // SWAGGER DISABLED FOR PHASE 3 TESTING
 // #include "oatpp-swagger/Controller.hpp"
@@ -48,6 +50,7 @@ namespace media::api {
         if (m_should_run) return;
         m_should_run = true;
         m_server_thread = std::thread(&HttpServer::run_internal, this);
+        m_ws_broadcaster_thread = std::thread(&HttpServer::run_ws_broadcaster, this);
         spdlog::info("HttpServer started on background thread.");
     }
 
@@ -59,6 +62,9 @@ namespace media::api {
         
         if (m_server_thread.joinable()) {
             m_server_thread.detach(); 
+        }
+        if (m_ws_broadcaster_thread.joinable()) {
+            m_ws_broadcaster_thread.detach();
         }
         spdlog::info("HttpServer stopped.");
     }
@@ -94,6 +100,10 @@ namespace media::api {
             auto userController = std::make_shared<UserController>(objectMapper, m_db);
             router->addController(userController);
 
+            auto websocketConnectionHandler = oatpp::websocket::ConnectionHandler::createShared();
+            m_ws_controller = WebSocketController::createShared(objectMapper, websocketConnectionHandler);
+            router->addController(m_ws_controller);
+
             // 2. Swagger Disabled (Bypassing version conflict)
             // We will verify the API using raw CURL commands instead.
             
@@ -111,6 +121,31 @@ namespace media::api {
 
         } catch (const std::exception& e) {
             spdlog::critical("HttpServer Crash: {}", e.what());
+        }
+    }
+
+    void HttpServer::run_ws_broadcaster() {
+        auto objectMapper = oatpp::parser::json::mapping::ObjectMapper::createShared();
+        while (m_should_run) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            if (m_ws_controller) {
+                auto engine_status = m_engine->getSessionStatus();
+                if (engine_status.empty()) continue; 
+
+                auto response_list = oatpp::Vector<oatpp::Object<TorrentStatusDto>>::createShared();
+                for (const auto& item : engine_status) {
+                    auto dto = TorrentStatusDto::createShared();
+                    dto->info_hash = item.info_hash;
+                    dto->name = item.name;
+                    dto->progress = item.progress;
+                    dto->state = item.state;
+                    dto->download_rate = item.download_rate;
+                    response_list->push_back(dto);
+                }
+                
+                auto json = objectMapper->writeToString(response_list);
+                m_ws_controller->broadcastStatus(json);
+            }
         }
     }
 

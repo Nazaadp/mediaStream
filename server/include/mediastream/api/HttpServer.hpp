@@ -8,6 +8,7 @@
 namespace media::core { class TorrentEngine; }
 namespace media::services { class ContentDiscoveryManager; }
 namespace media::database { class Database; }
+namespace media::api { class WebSocketController; }
 
 namespace media::api {
 
@@ -25,11 +26,14 @@ namespace media::api {
 
     private:
         void run_internal(); // The actual loop
+        void run_ws_broadcaster(); // Web socket push loop
 
         std::shared_ptr<media::core::TorrentEngine> m_engine;
         std::shared_ptr<media::services::ContentDiscoveryManager> m_discovery;
         std::shared_ptr<media::database::Database> m_db;
+        std::shared_ptr<media::api::WebSocketController> m_ws_controller;
         std::thread m_server_thread;
+        std::thread m_ws_broadcaster_thread;
         std::atomic<bool> m_should_run;
     };
 

@@ -1,7 +1,7 @@
 <script>
     export let item;
     let activeDownloads = {};
-    let statusInterval;
+    let ws;
 
     import { createEventDispatcher, onMount, onDestroy } from "svelte";
     const dispatch = createEventDispatcher();
@@ -10,11 +10,11 @@
         dispatch("close");
     }
 
-    async function fetchActiveDownloads() {
-        try {
-            const res = await fetch("https://192.168.1.37:443/api/v1/status");
-            if (res.ok) {
-                const statusList = await res.json();
+    function connectWebSocket() {
+        ws = new WebSocket("wss://192.168.1.37:443/api/v1/ws/status");
+        ws.onmessage = (event) => {
+            try {
+                const statusList = JSON.parse(event.data);
                 let newDownloads = {};
                 for (const t of statusList) {
                     newDownloads[t.info_hash.toLowerCase()] = {
@@ -23,15 +23,17 @@
                     };
                 }
                 activeDownloads = newDownloads;
-            }
-        } catch (e) {}
+            } catch (e) {}
+        };
+        ws.onclose = () => {
+            setTimeout(connectWebSocket, 2000);
+        };
     }
 
     let isViewLater = false;
 
     onMount(() => {
-        fetchActiveDownloads(); // Fetch immediately upon opening modal
-        statusInterval = setInterval(fetchActiveDownloads, 1500); // 1.5s refresh for smooth pie chart
+        connectWebSocket();
 
         try {
             const stored = sessionStorage.getItem("viewLaterCache");
@@ -52,7 +54,7 @@
     });
 
     onDestroy(() => {
-        if (statusInterval) clearInterval(statusInterval);
+        if (ws) ws.close();
     });
 
     // Default season/episode selects for TV Series/Anime
