@@ -126,11 +126,19 @@ namespace media::api {
 
     void HttpServer::run_ws_broadcaster() {
         auto objectMapper = oatpp::parser::json::mapping::ObjectMapper::createShared();
+        oatpp::String last_json = "";
+
         while (m_should_run) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             if (m_ws_controller) {
                 auto engine_status = m_engine->getSessionStatus();
-                if (engine_status.empty()) continue; 
+                if (engine_status.empty()) {
+                    if (last_json != "[]") {
+                        last_json = "[]";
+                        m_ws_controller->broadcastStatus("[]");
+                    }
+                    continue; 
+                }
 
                 auto response_list = oatpp::Vector<oatpp::Object<TorrentStatusDto>>::createShared();
                 for (const auto& item : engine_status) {
@@ -144,7 +152,10 @@ namespace media::api {
                 }
                 
                 auto json = objectMapper->writeToString(response_list);
-                m_ws_controller->broadcastStatus(json);
+                if (json != last_json) {
+                    last_json = json;
+                    m_ws_controller->broadcastStatus(json);
+                }
             }
         }
     }
