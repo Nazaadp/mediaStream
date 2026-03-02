@@ -89,22 +89,19 @@ public:
     /**
      *  This method is called when socket is created
      */
-    void onAfterCreate_NonBlocking(const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket) override {
+    void onAfterCreate(const oatpp::websocket::WebSocket& socket, const std::shared_ptr<const ParameterMap>& params) override {
         (void)socket;
-    }
-
-    void onBeforeDestroy_NonBlocking(const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket) override {
-        (void)socket;
-    }
-
-    void onAfterCreate_Blocking(const std::shared_ptr<oatpp::websocket::WebSocket>& socket) override {
+        (void)params;
         auto listener = std::make_shared<StatusWebSocketListener>(m_clientsMutex, m_clients);
-        listener->setSocket(socket.get());
-        socket->setListener(listener);
+        // We have to cast const away because Oat++ 1.3.0 passes 'const WebSocket&', but 'setListener' requires non-const or is called internally
+        // Actually, oatpp 1.3.0 does: const_cast<WebSocket*>(&socket)->setListener(listener);
+        auto* mutableSocket = const_cast<oatpp::websocket::WebSocket*>(&socket);
+        listener->setSocket(mutableSocket);
+        mutableSocket->setListener(listener);
         spdlog::info("New WebSocket client connected for /api/v1/ws/status.");
     }
 
-    void onBeforeDestroy_Blocking(const std::shared_ptr<oatpp::websocket::WebSocket>& socket) override {
+    void onBeforeDestroy(const oatpp::websocket::WebSocket& socket) override {
         (void)socket;
         // Listener will be destroyed and unregister itself when shared_ptr goes out of scope here
     }
