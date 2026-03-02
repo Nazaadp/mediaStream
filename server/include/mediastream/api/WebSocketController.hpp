@@ -1,9 +1,11 @@
 #pragma once
 
-#include "oatpp-websocket/AsyncWebSocket.hpp"
+#include "oatpp-websocket/WebSocket.hpp"
+#include "oatpp-websocket/ConnectionHandler.hpp"
+#include "oatpp-websocket/Handshaker.hpp"
+#include "oatpp/web/server/api/ApiController.hpp"
 #include "oatpp/core/macro/codegen.hpp"
 #include "oatpp/core/macro/component.hpp"
-#include "oatpp/web/server/api/ApiController.hpp"
 #include <spdlog/spdlog.h>
 #include <mutex>
 #include <unordered_set>
@@ -11,59 +13,100 @@
 namespace media::api {
 
 /**
- * Custom WebSocketListener to handle individual connections
+ * Custom WebSocketListener to handle individual connections (Synchronous)
  */
-class StatusWebSocketListener : public oatpp::websocket::AsyncWebSocket::Listener {
+class StatusWebSocketListener : public oatpp::websocket::WebSocket::Listener {
 private:
-    std::shared_ptr<oatpp::websocket::AsyncWebSocket> m_socket;
-    // We can use a reference to the global manager to unregister on disconnect
-    std::function<void(StatusWebSocketListener*)> m_onDisconnect;
+    std::mutex* m_clientsMutex;
+    std::unordered_set<StatusWebSocketListener*>* m_clients;
+    oatpp::websocket::WebSocket* m_socket; 
 
 public:
-    StatusWebSocketListener(const std::function<void(StatusWebSocketListener*)>& onDisconnect)
-        : m_onDisconnect(onDisconnect) 
-    {}
-
-    // Triggered when the socket connects
-    oatpp::coro::CoroutineStarter onPing(const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket, const oatpp::String& message) override {
-        return socket->sendPongAsync(message);
+    StatusWebSocketListener(std::mutex* clientsMutex, std::unordered_set<StatusWebSocketListener*>* clients)
+        : m_clientsMutex(clientsMutex), m_clients(clients), m_socket(nullptr)
+    {
+        std::lock_guard<std::mutex> lock(*m_clientsMutex);
+        m_clients->insert(this);
     }
 
-    oatpp::coro::CoroutineStarter onPong(const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket, const oatpp::String& message) override {
+    ~StatusWebSocketListener() {
+        std::lock_guard<std::mutex> lock(*m_clientsMutex);
+        m_clients->erase(this);
+    }
+
+    void onPing(const oatpp::websocket::WebSocket& socket, const oatpp::String& message) override {
+        // Send pong back
+        socket.sendPong(message);
+    }
+
+    void onPong(const oatpp::websocket::WebSocket& socket, const oatpp::String& message) override {
         (void)socket;
         (void)message;
-        return nullptr;
     }
 
-    oatpp::coro::CoroutineStarter onClose(const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket, v_uint16 code, const oatpp::String& message) override {
+    void onClose(const oatpp::websocket::WebSocket& socket, v_uint16 code, const oatpp::String& message) override {
         (void)socket;
         (void)code;
         (void)message;
         spdlog::info("WebSocket connection closed.");
-        m_onDisconnect(this);
-        return nullptr;
     }
 
-    oatpp::coro::CoroutineStarter readMessage(const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket, v_uint8 opcode, p_char8 data, oatpp::v_io_size size) override {
+    void readMessage(const oatpp::websocket::WebSocket& socket, v_uint8 opcode, p_char8 data, oatpp::v_io_size size) override {
         (void)socket;
         (void)opcode;
         (void)data;
         (void)size;
         // Read messages from client (not strictly needed right now since client only listens)
-        return nullptr;
+    }
+
+    // Capture the socket once connected
+    void setSocket(oatpp::websocket::WebSocket* socket) {
+        m_socket = socket;
     }
 
     // Custom method to push data to the client
     void sendMessage(const oatpp::String& msg) {
         if(m_socket) {
-            // Note: oatpp Websocket is thread safe for sending messages in async mode,
-            // but we must be careful. Best practice is locking or async dispatcher.
-            m_socket->sendOneFrameTextAsync(msg);
+            // Note: oatpp Websocket is thread safe for sending messages
+            m_socket->sendOneFrameText(msg);
         }
     }
+};
 
-    void setSocket(const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket) {
-        m_socket = socket;
+/**
+ * Instance listener that creates a new StatusWebSocketListener per connection
+ */
+class WSInstanceListener : public oatpp::websocket::ConnectionHandler::SocketInstanceListener {
+private:
+    std::mutex* m_clientsMutex;
+    std::unordered_set<StatusWebSocketListener*>* m_clients;
+
+public:
+    WSInstanceListener(std::mutex* clientsMutex, std::unordered_set<StatusWebSocketListener*>* clients)
+        : m_clientsMutex(clientsMutex), m_clients(clients)
+    {}
+
+    /**
+     *  This method is called when socket is created
+     */
+    void onAfterCreate_NonBlocking(const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket) override {
+        (void)socket;
+    }
+
+    void onBeforeDestroy_NonBlocking(const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket) override {
+        (void)socket;
+    }
+
+    void onAfterCreate_Blocking(const std::shared_ptr<oatpp::websocket::WebSocket>& socket) override {
+        auto listener = std::make_shared<StatusWebSocketListener>(m_clientsMutex, m_clients);
+        listener->setSocket(socket.get());
+        socket->setListener(listener);
+        spdlog::info("New WebSocket client connected for /api/v1/ws/status.");
+    }
+
+    void onBeforeDestroy_Blocking(const std::shared_ptr<oatpp::websocket::WebSocket>& socket) override {
+        (void)socket;
+        // Listener will be destroyed and unregister itself when shared_ptr goes out of scope here
     }
 };
 
@@ -77,43 +120,27 @@ class WebSocketController : public oatpp::web::server::api::ApiController {
 private:
     std::mutex m_clientsMutex;
     std::unordered_set<StatusWebSocketListener*> m_clients;
-
-    void registerClient(StatusWebSocketListener* client) {
-        std::lock_guard<std::mutex> lock(m_clientsMutex);
-        m_clients.insert(client);
-    }
-
-    void unregisterClient(StatusWebSocketListener* client) {
-        std::lock_guard<std::mutex> lock(m_clientsMutex);
-        m_clients.erase(client);
-    }
+    std::shared_ptr<oatpp::websocket::ConnectionHandler> m_websocketConnectionHandler;
 
 public:
-    WebSocketController(const std::shared_ptr<ObjectMapper>& objectMapper)
+    WebSocketController(const std::shared_ptr<ObjectMapper>& objectMapper, 
+                        const std::shared_ptr<oatpp::websocket::ConnectionHandler>& websocketConnectionHandler)
         : oatpp::web::server::api::ApiController(objectMapper)
-    {}
+        , m_websocketConnectionHandler(websocketConnectionHandler)
+    {
+        m_websocketConnectionHandler->setSocketInstanceListener(
+            std::make_shared<WSInstanceListener>(&m_clientsMutex, &m_clients)
+        );
+    }
 
-    static std::shared_ptr<WebSocketController> createShared(const std::shared_ptr<ObjectMapper>& objectMapper) {
-        return std::make_shared<WebSocketController>(objectMapper);
+    static std::shared_ptr<WebSocketController> createShared(const std::shared_ptr<ObjectMapper>& objectMapper,
+                                                             const std::shared_ptr<oatpp::websocket::ConnectionHandler>& websocketConnectionHandler) {
+        return std::make_shared<WebSocketController>(objectMapper, websocketConnectionHandler);
     }
 
     // Endpoint that handles WebSocket upgrades
-    ENDPOINT("GET", "/api/v1/ws/status", wsStatus) {
-        return oatpp::websocket::Handshaker::serversideHandshake(
-            getRequestHeaders(),
-            [this](const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket) {
-                // Connection achieved! Create a listener.
-                auto listener = std::make_shared<StatusWebSocketListener>(
-                    [this](StatusWebSocketListener* c) { this->unregisterClient(c); }
-                );
-                
-                listener->setSocket(socket);
-                this->registerClient(listener.get());
-                
-                socket->setListener(listener);
-                spdlog::info("New WebSocket client connected for /api/v1/ws/status.");
-            }
-        );
+    ENDPOINT("GET", "/api/v1/ws/status", wsStatus, REQUEST(std::shared_ptr<IncomingRequest>, request)) {
+        return oatpp::websocket::Handshaker::serversideHandshake(request->getHeaders(), m_websocketConnectionHandler);
     }
 
     // Broadcast message to all connected clients
