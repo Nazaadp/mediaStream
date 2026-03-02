@@ -16,10 +16,10 @@ namespace media::api {
  * Custom WebSocketListener to handle individual connections (Synchronous)
  */
 class StatusWebSocketListener : public oatpp::websocket::WebSocket::Listener {
-private:
     std::mutex* m_clientsMutex;
     std::unordered_set<StatusWebSocketListener*>* m_clients;
     oatpp::websocket::WebSocket* m_socket; 
+    std::mutex m_socketMutex; // Prevents concurrent access to m_socket
 
 public:
     StatusWebSocketListener(std::mutex* clientsMutex, std::unordered_set<StatusWebSocketListener*>* clients)
@@ -61,14 +61,26 @@ public:
 
     // Capture the socket once connected
     void setSocket(oatpp::websocket::WebSocket* socket) {
+        std::lock_guard<std::mutex> lock(m_socketMutex);
         m_socket = socket;
+    }
+
+    // Called when the connection handler Destroys the socket
+    void invalidateSocket() {
+        std::lock_guard<std::mutex> lock(m_socketMutex);
+        m_socket = nullptr;
     }
 
     // Custom method to push data to the client
     void sendMessage(const oatpp::String& msg) {
+        std::lock_guard<std::mutex> lock(m_socketMutex);
         if(m_socket) {
-            // Note: oatpp Websocket is thread safe for sending messages
-            m_socket->sendOneFrameText(msg);
+            try {
+                m_socket->sendOneFrameText(msg);
+            } catch (...) {
+                // Ignore exceptions, the socket is likely closed or broken
+                m_socket = nullptr;
+            }
         }
     }
 };
@@ -102,8 +114,13 @@ public:
     }
 
     void onBeforeDestroy(const oatpp::websocket::WebSocket& socket) override {
-        (void)socket;
-        // Listener will be destroyed and unregister itself when shared_ptr goes out of scope here
+        // Safe tear down
+        auto* mutableSocket = const_cast<oatpp::websocket::WebSocket*>(&socket);
+        auto listener = mutableSocket->getListener();
+        if (listener) {
+             auto myListener = std::static_pointer_cast<StatusWebSocketListener>(listener);
+             myListener->invalidateSocket();
+        }
     }
 };
 

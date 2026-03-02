@@ -130,32 +130,39 @@ namespace media::api {
 
         while (m_should_run) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            if (m_ws_controller) {
-                auto engine_status = m_engine->getSessionStatus();
-                if (engine_status.empty()) {
-                    if (last_json != "[]") {
-                        last_json = "[]";
-                        m_ws_controller->broadcastStatus("[]");
+            try {
+                if (m_ws_controller) {
+                    auto engine_status = m_engine->getSessionStatus();
+                    if (engine_status.empty()) {
+                        if (last_json != "[]") {
+                            last_json = "[]";
+                            m_ws_controller->broadcastStatus("[]");
+                        }
+                        continue; 
                     }
-                    continue; 
-                }
 
-                auto response_list = oatpp::Vector<oatpp::Object<TorrentStatusDto>>::createShared();
-                for (const auto& item : engine_status) {
-                    auto dto = TorrentStatusDto::createShared();
-                    dto->info_hash = item.info_hash;
-                    dto->name = item.name;
-                    dto->progress = item.progress;
-                    dto->state = item.state;
-                    dto->download_rate = item.download_rate;
-                    response_list->push_back(dto);
+                    auto response_list = oatpp::Vector<oatpp::Object<TorrentStatusDto>>::createShared();
+                    for (const auto& item : engine_status) {
+                        auto dto = TorrentStatusDto::createShared();
+                        dto->info_hash = item.info_hash;
+                        dto->name = item.name;
+                        dto->progress = item.progress;
+                        dto->state = item.state;
+                        dto->download_rate = item.download_rate;
+                        response_list->push_back(dto);
+                    }
+                    
+                    auto json = objectMapper->writeToString(response_list);
+                    if (json != last_json) {
+                        last_json = json;
+                        m_ws_controller->broadcastStatus(json);
+                    }
                 }
-                
-                auto json = objectMapper->writeToString(response_list);
-                if (json != last_json) {
-                    last_json = json;
-                    m_ws_controller->broadcastStatus(json);
-                }
+            } catch (const std::exception& e) {
+                spdlog::error("WebSocket Broadcaster Error: {}", e.what());
+                // Prevent thread crash. Assume last_json is dirty, will retry next sec.
+            } catch (...) {
+                spdlog::error("WebSocket Broadcaster Unknown Error");
             }
         }
     }
