@@ -27,6 +27,7 @@
 
     // Torrent State
     let ws;
+    let isDestroyed = false;
     let torrentProgress = 0;
     let torrentState = "Connecting to peers...";
 
@@ -68,15 +69,36 @@
         };
 
         ws.onclose = () => {
-            if (!isReadyToPlay) {
+            if (!isDestroyed && !isReadyToPlay) {
                 console.log("WebSocket closed prematurely, reconnecting...");
                 setTimeout(connectWebSocket, 2000);
             }
         };
     }
 
+    async function fetchInitialStatus() {
+        try {
+            const res = await fetch("https://192.168.1.37:443/api/v1/status");
+            const statusList = await res.json();
+            const myTorrent = statusList.find(
+                (t) => t.info_hash.toLowerCase() === infoHash.toLowerCase(),
+            );
+
+            if (myTorrent) {
+                torrentProgress = myTorrent.progress;
+                torrentState = myTorrent.state;
+                if (torrentProgress > 0.05 && !isReadyToPlay) {
+                    isReadyToPlay = true;
+                }
+            }
+        } catch (e) {
+            console.error("Failed to load initial torrent status", e);
+        }
+    }
+
     onMount(() => {
         console.log("Started Video Player component for hash:", infoHash);
+        fetchInitialStatus();
         connectWebSocket();
     });
 
@@ -167,7 +189,11 @@
     }
 
     onDestroy(() => {
-        if (ws) ws.close();
+        isDestroyed = true;
+        if (ws) {
+            ws.onclose = null; // Prevent reconnect
+            ws.close();
+        }
         saveWatchHistory();
     });
 

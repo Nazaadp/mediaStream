@@ -2,6 +2,7 @@
     export let item;
     let activeDownloads = {};
     let ws;
+    let isDestroyed = false;
 
     import { createEventDispatcher, onMount, onDestroy } from "svelte";
     const dispatch = createEventDispatcher();
@@ -26,13 +27,33 @@
             } catch (e) {}
         };
         ws.onclose = () => {
-            setTimeout(connectWebSocket, 2000);
+            if (!isDestroyed) {
+                setTimeout(connectWebSocket, 2000);
+            }
         };
+    }
+
+    async function fetchInitialStatus() {
+        try {
+            const res = await fetch("https://192.168.1.37:443/api/v1/status");
+            const statusList = await res.json();
+            let newDownloads = {};
+            for (const t of statusList) {
+                newDownloads[t.info_hash.toLowerCase()] = {
+                    progress: t.progress,
+                    state: t.state,
+                };
+            }
+            activeDownloads = newDownloads;
+        } catch (e) {
+            console.error("Failed to load initial torrent status", e);
+        }
     }
 
     let isViewLater = false;
 
     onMount(() => {
+        fetchInitialStatus();
         connectWebSocket();
 
         try {
@@ -54,7 +75,11 @@
     });
 
     onDestroy(() => {
-        if (ws) ws.close();
+        isDestroyed = true;
+        if (ws) {
+            ws.onclose = null; // Prevent reconnect logic
+            ws.close();
+        }
     });
 
     // Default season/episode selects for TV Series/Anime
