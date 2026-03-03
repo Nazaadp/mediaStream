@@ -1,96 +1,69 @@
-# MediaStream - Private Netflix-like Torrent Streaming Platform
+# MediaStream - Private Netflix-like Streaming Platform
 
-A local, private application to discover, download, and stream movies, TV series, and anime via torrents. Built entirely in C++ with a Qt desktop client and oatpp server.
+A local, private application to discover, download, and stream movies, TV series, and anime via torrents. Built with a high-performance C++ backend (oatpp/libtorrent) and a modern SvelteKit + Tauri desktop client.
 
 ## 🎯 Features
 
 ### Current Implementation
-- ✅ **Content Discovery**: Automatic fetching from YTS (movies), EZTV (series), and Nyaa (anime)
-- ✅ **Database Management**: SQLite-based storage for media, torrents, and watch history
-- ✅ **Torrent Engine**: Sequential download optimized for streaming
-- ✅ **REST API**: oatpp-based HTTP server
-- ✅ **Qt Desktop Client**: Netflix-style dark theme interface
+
+- ✅ **Content Discovery**: Automatic fetching from YTS (movies), EZTV (series), and Nyaa (anime) enriched with TMDB metadata.
+- ✅ **SvelteKit/Tauri Desktop Client**: A modern, responsive, Netflix-style dark theme interface.
+- ✅ **Database Management**: SQLite-based storage for media, torrents, and watch history.
+- ✅ **Torrent Engine**: Sequential download optimized for instant streaming.
+- ✅ **Direct Video Streaming**: HTTP Range integration for seamless HTML5 `<video>` playback.
+- ✅ **Offline Caching**: Aggressive localStorage/sessionStorage usage for instant UI response and lower server loads.
+- ✅ **WebSocket Syncing**: Real-time download progress broadcasting.
 
 ### Planned Features
-- 🚧 **TMDB Integration**: Rich metadata with posters, descriptions, and ratings
-- 🚧 **HTTP Range Streaming**: Progressive video playback while downloading
-- 📋 **Watch History**: Resume playback from where you left off
-- 📋 **Search & Filter**: Find content across all sources
-- 📋 **HTTPS Support**: Secure client-server communication
-- 📋 **Video Player**: Integrated Qt Multimedia player
+
+- 🚧 **Search & Filter**: Refined discovery across all sources.
+- 📋 **Authentication**: Multi-user account handling.
+- 📋 **Subtitles**: OpenSubtitles integration.
 
 ## 🏗️ Architecture
 
-```
+```text
 ┌─────────────────┐
-│  Qt Client      │  Browse, search, stream
-│  (C++/Qt5)      │
+│  Tauri Client   │  Browse, search, discover TMDB
+│  (SvelteKit)    │  HTML5 Video streaming
 └────────┬────────┘
-         │ HTTPS REST API
+         │ HTTPS / WebSockets
 ┌────────▼────────┐
-│  oatpp Server   │  Content discovery, torrent management
-│  (C++/oatpp)    │
+│  oatpp Server   │  REST API, File Serving
+│  (C++/oatpp)    │  Internal HTTP Port: 8000
+│                 │  Local Network: HTTPS 443
 └────────┬────────┘
          │
 ┌────────▼────────┐
 │  libtorrent     │  Sequential torrent downloads
-│  + SQLite       │  Media database
+│  + SQLite       │  Database (History, Media)
 └─────────────────┘
 ```
+
+The UI is built with **Svelte 5** and **Tauri v2**. The backend uses **C++20** and **Oat++** to handle content discovery, direct-to-memory media manipulation via **libtorrent**, and API service on internal port 8000 (exposed to the network via HTTPS on port 443).
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed system design.
 
 ## 📋 Prerequisites
 
-### Server
-- C++20 compiler (GCC 10+, Clang 12+, or MSVC 2019+)
+### Server (Ubuntu/Linux)
+
+- C++20 compiler (GCC 10+, Clang 12+)
 - CMake 3.20+
 - Conan 2.0+
 - Python 3.8+ (for Conan)
 
-### Client
-- C++17 compiler
-- CMake 3.10+
-- Qt5 (Widgets, Network, Multimedia)
-- vcpkg (Windows) or system Qt packages (Linux/macOS)
+### Client (Windows/macOS/Linux)
+
+- Node.js (v18+)
+- npm or pnpm
+- Rust and Cargo (for Tauri build pipeline)
 
 ## 🚀 Quick Start
 
-### 1. Install Dependencies
+### 1. Build & Run Server
 
-#### Server (using Conan)
-```bash
-# Install Conan
-pip install conan
-
-# Create default profile
-conan profile detect
-```
-
-#### Client (using vcpkg on Windows)
-```bash
-# Install vcpkg
-git clone https://github.com/Microsoft/vcpkg.git
-cd vcpkg
-./bootstrap-vcpkg.sh  # or bootstrap-vcpkg.bat on Windows
-
-# Install Qt5
-./vcpkg install qt5-base qt5-multimedia
-```
-
-#### Client (using system packages on Linux)
-```bash
-# Ubuntu/Debian
-sudo apt install qt5-default qtmultimedia5-dev
-
-# Fedora
-sudo dnf install qt5-qtbase-devel qt5-qtmultimedia-devel
-
-# Arch
-sudo pacman -S qt5-base qt5-multimedia
-```
-
-### 2. Build Server
+The server handles downloading and database management. Ensure you have an appropriate `.env` file containing `TMDB_APIKEY_AT`.
 
 ```bash
 cd server
@@ -99,7 +72,7 @@ mkdir build && cd build
 # Install dependencies with Conan
 conan install .. --build=missing -s compiler.cppstd=20
 
-# Build
+# Configure and Build
 cmake .. -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
 cmake --build . -j$(nproc)
 
@@ -107,165 +80,82 @@ cmake --build . -j$(nproc)
 ./mediastream_server
 ```
 
-The server will start on `http://0.0.0.0:8000`
+The oat++ server will start internally on `http://0.0.0.0:8000`. Note this system expects a reverse proxy/firewall to expose the API securely to the rest of the LAN via TLS/HTTPS on port `443`.
 
-### 3. Build Client
+### 2. Build & Run Client (Tauri Desktop)
+
+Ensure you have Rust and Node.js installed.
 
 ```bash
-cd client
-mkdir build && cd build
+cd clientTauri
 
-# Configure (adjust vcpkg path for Windows)
-cmake .. -DCMAKE_TOOLCHAIN_FILE=/path/to/vcpkg/scripts/buildsystems/vcpkg.cmake
+# Install Node dependencies
+npm install
 
-# Build
-cmake --build . --config Release
-
-# Run
-./client  # or client.exe on Windows
+# Run the Tauri development app
+npm run tauri dev
 ```
 
 ## 📁 Project Structure
 
-```
+```text
 mediaStream/
-├── server/                      # C++ Backend Server
+├── server/                      # C++ Backend Server (oatpp)
 │   ├── include/mediastream/
-│   │   ├── core/               # TorrentEngine
-│   │   ├── database/           # SQLite database layer
-│   │   ├── services/           # Content discovery (YTS, EZTV, Nyaa)
-│   │   └── api/                # REST API controllers
+│   │   ├── core/               # TorrentEngine (libtorrent)
+│   │   ├── database/           # SQLite database layer (oatpp-sqlite)
+│   │   └── api/                # REST API & WebSocket controllers
 │   ├── src/
 │   │   ├── core/
 │   │   ├── database/
-│   │   ├── services/
 │   │   ├── api/
 │   │   └── main.cpp
 │   ├── CMakeLists.txt
 │   └── conanfile.txt
 │
-├── client/                      # Qt Desktop Client
-│   ├── main.cpp
-│   ├── mainwindow.h
-│   ├── mainwindow.cpp
-│   └── CMakeLists.txt
+├── clientTauri/                 # SvelteKit + Tauri Client
+│   ├── src/
+│   │   ├── lib/                # Reusable components (MediaCard)
+│   │   └── routes/             # SvelteKit routing
+│   ├── src-tauri/               # Rust OS-level bindings
+│   ├── package.json
+│   └── tauri.conf.json
 │
 ├── ARCHITECTURE.md              # Detailed system design
+├── WORKFLOW.md                  # Development practices and solved bugs
 └── README.md                    # This file
 ```
 
-## 🔧 Configuration
+## 📡 Core API Endpoints
 
-### Server Configuration
-Edit `server/src/main.cpp`:
-```cpp
-// Port
-const int SERVER_PORT = 8000;
-
-// Download directory
-const std::string DOWNLOAD_DIR = "./downloads";
-
-// Database path
-const std::string DB_PATH = "./mediastream.db";
-```
-
-### Client Configuration
-Edit `client/mainwindow.h`:
-```cpp
-QString serverIp = "192.168.1.37";  // Your server IP
-int serverPort = 8000;
-```
-
-## 🎮 Usage
-
-### Server
-1. Start the server: `./mediastream_server`
-2. Server listens on port 8000
-3. Access API at `http://localhost:8000/api/v1/`
-
-### Client
-1. Launch the client application
-2. Browse available content from YTS, EZTV, and Nyaa
-3. Click on a movie/series to view details
-4. Click "Download" to start torrent
-5. Stream while downloading (once implemented)
-
-## 📡 API Endpoints
-
-### Current Endpoints
-- `POST /api/v1/torrents` - Add magnet link
-- `GET /api/v1/status` - Get active torrents
-- `DELETE /api/v1/torrents/{hash}` - Remove torrent
-
-### Planned Endpoints
-- `GET /api/v1/discover/popular` - Popular content
-- `GET /api/v1/discover/movies` - Movies from YTS
-- `GET /api/v1/discover/series` - Series from EZTV
-- `GET /api/v1/discover/anime` - Anime from Nyaa
-- `GET /api/v1/search?q={query}` - Search all sources
-- `GET /api/v1/stream/{media_id}` - Stream video (Range support)
-- `POST /api/v1/watch-history` - Update watch progress
-
-## 🛠️ Development Roadmap
-
-### Phase 1: Foundation ✅
-- [x] Database schema
-- [x] Content discovery services
-- [x] Basic torrent management
-- [x] REST API structure
-
-### Phase 2: Core Features 🚧
-- [ ] TMDB metadata integration
-- [ ] HTTP Range streaming endpoint
-- [ ] Content manager orchestration
-- [ ] Enhanced API endpoints
-
-### Phase 3: Client Enhancement 📋
-- [ ] Improved Qt UI
-- [ ] Video player integration
-- [ ] Watch history tracking
-- [ ] Search and filtering
-
-### Phase 4: Production Ready 📋
-- [ ] SSL/TLS support
-- [ ] Error handling and logging
-- [ ] Performance optimization
-- [ ] Documentation
+- `GET /api/v1/stream/{infoHash}` - Stream video (HTTP Range support built-in)
+- `POST /api/v1/torrents` - Add magnet link for downloading
+- `DELETE /api/v1/torrents/{infoHash}` - Remove torrent logic
+- `GET /api/v1/status` - Get active torrents via REST
+- `POST /api/v1/user/history` - Client uploads complete TMDB JSON + watch progress
+- `GET /api/v1/user/history` - Fetch user's watch history array
+- `wss://{server-ip}:443/api/v1/ws/status` - Live torrent progress stream (Note: Routes through HTTPS proxy)
+- `GET /api/v1/discover/*` - Content Discovery (Movies, Series, Anime) managed by the C++ backend
 
 ## 🔒 Security Considerations
 
-- **Encryption**: Forced RC4 encryption for torrent traffic
-- **Non-root**: Server refuses to run as root user
-- **Input Validation**: Magnet URI validation
-- **File Permissions**: Restrictive umask (0077)
-- **HTTPS**: Planned for client-server communication
+- **Encryption**: Forced RC4 encryption for torrent traffic.
+- **Non-root**: Server refuses to run as root user.
+- **Input Validation**: Strict JSON payload casting and Magnet URI validation.
+- **File Permissions**: Restrictive umask (0077) on downloads.
+- **CORS**: Strict lockdown natively allowing only `http://localhost:1420`.
 
 ## 🐛 Troubleshooting
 
 ### Server won't start
-- Check if port 8000 is available: `netstat -tuln | grep 8000`
-- Ensure you're not running as root
-- Check logs for specific errors
 
-### Client can't connect
-- Verify server IP and port in client configuration
-- Check firewall settings
-- Ensure server is running: `curl http://localhost:8000/api/v1/status`
+- Check if the port (default 443/8000) is available.
+- Ensure you're not running as root.
 
-### Build errors
-- Ensure all dependencies are installed
-- Check C++ standard version (C++20 for server, C++17 for client)
-- Update Conan/vcpkg packages
+### Client can't connect (CORS or Fetch Failed)
 
-## 📝 Next Steps
-
-To continue development, the next priorities are:
-
-1. **TMDB Integration**: Fetch rich metadata for discovered content
-2. **Streaming Endpoint**: Implement HTTP Range request handler
-3. **Content Manager**: Orchestrate discovery, download, and metadata
-4. **Client UI**: Enhance with video player and better navigation
-5. **Testing**: Add unit tests and integration tests
+- Ensure the server is running and accessible at the IP defined in the client's configuration (usually `.env` inside `clientTauri/`).
+- Verify firewall settings on Ubuntu for port `443`/`8000`.
 
 ## 📄 License
 
@@ -273,7 +163,7 @@ Private use only. Not for distribution.
 
 ## 🤝 Contributing
 
-This is a private project. For questions or suggestions, contact the maintainer.
+For questions or suggestions, refer to `WORKFLOW.md` for architectural guidelines when contributing.
 
 ## ⚠️ Legal Disclaimer
 
