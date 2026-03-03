@@ -6,7 +6,7 @@
     // Use the Svelte store directly to avoid reactive closure scope bugs
     const infoHash = $page.params.infoHash;
     $: videoSrc = isReadyToPlay
-        ? `https://192.168.1.37:443/api/v1/stream/${infoHash}`
+        ? `${import.meta.env.VITE_API_URL}/api/v1/stream/${infoHash}`
         : null;
 
     let videoElement;
@@ -32,7 +32,7 @@
     let torrentState = "Connecting to peers...";
 
     function connectWebSocket() {
-        ws = new WebSocket("wss://192.168.1.37:443/api/v1/ws/status");
+        ws = new WebSocket(`${import.meta.env.VITE_WS_URL}/api/v1/ws/status`);
 
         ws.onopen = () => {
             console.log("WebSocket connected for status updates");
@@ -78,7 +78,9 @@
 
     async function fetchInitialStatus() {
         try {
-            const res = await fetch("https://192.168.1.37:443/api/v1/status");
+            const res = await fetch(
+                `${import.meta.env.VITE_API_URL}/api/v1/status`,
+            );
             const statusList = await res.json();
             const myTorrent = statusList.find(
                 (t) => t.info_hash.toLowerCase() === infoHash.toLowerCase(),
@@ -177,11 +179,14 @@
                     completed: prog > 0.95, // Consider complete if > 95%
                 };
 
-                await fetch("https://192.168.1.37:443/api/v1/user/history", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload),
-                });
+                await fetch(
+                    `${import.meta.env.VITE_API_URL}/api/v1/user/history`,
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                    },
+                );
             } catch (e) {
                 console.error("Failed to POST history:", e);
             }

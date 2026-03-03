@@ -28,11 +28,21 @@
         try {
             const [histRes, vlRes, moviesRes, seriesRes, animeRes] =
                 await Promise.all([
-                    fetch("https://192.168.1.37:443/api/v1/user/history"),
-                    fetch("https://192.168.1.37:443/api/v1/user/viewlater"),
-                    fetch("https://192.168.1.37:443/api/v1/discover/movies"),
-                    fetch("https://192.168.1.37:443/api/v1/discover/series"),
-                    fetch("https://192.168.1.37:443/api/v1/discover/anime"),
+                    fetch(
+                        `${import.meta.env.VITE_API_URL}/api/v1/user/history`,
+                    ),
+                    fetch(
+                        `${import.meta.env.VITE_API_URL}/api/v1/user/viewlater`,
+                    ),
+                    fetch(
+                        `${import.meta.env.VITE_API_URL}/api/v1/discover/movies`,
+                    ),
+                    fetch(
+                        `${import.meta.env.VITE_API_URL}/api/v1/discover/series`,
+                    ),
+                    fetch(
+                        `${import.meta.env.VITE_API_URL}/api/v1/discover/anime`,
+                    ),
                 ]);
 
             if (histRes.ok) history = await histRes.json();
@@ -129,7 +139,7 @@
 
         try {
             const res = await fetch(
-                "https://192.168.1.37:443/api/v1/torrents",
+                `${import.meta.env.VITE_API_URL}/api/v1/torrents`,
                 {
                     method: "POST",
                     headers: {
@@ -160,7 +170,7 @@
 
         try {
             const res = await fetch(
-                "https://192.168.1.37:443/api/v1/torrents",
+                `${import.meta.env.VITE_API_URL}/api/v1/torrents`,
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },

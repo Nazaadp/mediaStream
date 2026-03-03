@@ -12,7 +12,7 @@
     }
 
     function connectWebSocket() {
-        ws = new WebSocket("wss://192.168.1.37:443/api/v1/ws/status");
+        ws = new WebSocket(`${import.meta.env.VITE_WS_URL}/api/v1/ws/status`);
         ws.onmessage = (event) => {
             try {
                 const statusList = JSON.parse(event.data);
@@ -35,7 +35,9 @@
 
     async function fetchInitialStatus() {
         try {
-            const res = await fetch("https://192.168.1.37:443/api/v1/status");
+            const res = await fetch(
+                `${import.meta.env.VITE_API_URL}/api/v1/status`,
+            );
             const statusList = await res.json();
             let newDownloads = {};
             for (const t of statusList) {
@@ -134,11 +136,14 @@
                 console.error("Cache update failed", e);
             }
 
-            await fetch("https://192.168.1.37:443/api/v1/user/viewlater", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-            });
+            await fetch(
+                `${import.meta.env.VITE_API_URL}/api/v1/user/viewlater`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                },
+            );
         } catch (e) {
             console.error("Failed to save view later", e);
             isViewLater = !isViewLater; // revert on fail
