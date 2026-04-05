@@ -784,8 +784,10 @@ public:
             });
 
         if (result->isSuccess()) {
-            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT id AS value FROM torrents WHERE info_hash = :info_hash"), std::unordered_map<oatpp::String, oatpp::Void>{
-                {"info_hash", oatpp::String(torrent.info_hash)}
+            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT id AS value FROM episodes WHERE media_id = :media_id AND season_number = :season_number AND episode_number = :episode_number"), std::unordered_map<oatpp::String, oatpp::Void>{
+                {"media_id", oatpp::Int32(episode.media_id)},
+                {"season_number", oatpp::Int32(episode.season_number)},
+                {"episode_number", oatpp::Int32(episode.episode_number)}
             });
             if (idResult->isSuccess()) {
                 auto dataset = idResult->fetch<oatpp::Vector<oatpp::Object<IntResultDto>>>();
