@@ -13,9 +13,16 @@ quick-start-vm.sh
 /TESTING_GUIDE.md
 /WINDOWS_BUILD.md
 /NOTAS_LOCALES.md
+/server/SERVER_AUDIT.md
+/clientTauri/CLIENT_AUDIT.md
+/rattin-temp
+fix_database.py
+
 
 # Tauri / Frontend
 /clientTauri/node_modules
 /clientTauri/src-tauri/target
 /clientTauri/.svelte-kit
 /clientTauri/dist
+
+*.png
