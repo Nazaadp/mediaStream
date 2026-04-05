@@ -2,6 +2,7 @@
 #include "mediastream/services/TMDBFetcher.hpp"
 #include <spdlog/spdlog.h>
 #include <algorithm>
+#include <future>
 
 namespace media::services {
 
@@ -9,8 +10,39 @@ namespace media::services {
         : m_yts(std::make_unique<YTSClient>())
         , m_eztv(std::make_unique<EZTVClient>())
         , m_nyaa(std::make_unique<NyaaClient>())
+        , m_torrentio(std::make_unique<TorrentioClient>())
         , m_tmdb(std::make_unique<TMDBFetcher>()) {
         spdlog::info("Content Discovery Manager initialized");
+    }
+
+    namespace {
+        void enrichAndDeduplicate(std::vector<DiscoveredContent>& list, TMDBFetcher* tmdb, TorrentioClient* tio) {
+            for (auto& item : list) {
+                tmdb->enrichContent(item);
+
+                if (!item.imdb_id.empty()) {
+                    auto type = item.source == "EZTV" ? "tv" : "movie";
+                    auto tio_res = tio->searchTorrentsByIMDB(item.imdb_id, type);
+                    if (!tio_res.empty() && !tio_res[0].torrents.empty()) {
+                        item.torrents.insert(item.torrents.end(), tio_res[0].torrents.begin(), tio_res[0].torrents.end());
+                    }
+                }
+
+                std::unordered_map<std::string, TorrentQuality> deduped;
+                for (const auto& t : item.torrents) {
+                    if (deduped.find(t.hash) == deduped.end() || t.seeders > deduped[t.hash].seeders) {
+                        deduped[t.hash] = t;
+                    }
+                }
+                item.torrents.clear();
+                for (const auto& [hash, tq] : deduped) {
+                    item.torrents.push_back(tq);
+                }
+                std::sort(item.torrents.begin(), item.torrents.end(), [](const TorrentQuality& a, const TorrentQuality& b){
+                    return a.seeders > b.seeders;
+                });
+            }
+        }
     }
 
     ContentDiscoveryManager::~ContentDiscoveryManager() = default;
@@ -18,29 +50,37 @@ namespace media::services {
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchAllPopular(int limit_per_source) {
         std::vector<DiscoveredContent> all_content;
 
-        // Fetch from all sources in parallel (simplified sequential for now)
+        // Fetch from all sources in parallel
         try {
-            auto movies = m_yts->fetchPopular(limit_per_source);
-            all_content.insert(all_content.end(), movies.begin(), movies.end());
-            spdlog::info("Fetched {} movies from YTS", movies.size());
-        } catch (const std::exception& e) {
-            spdlog::error("Failed to fetch from YTS: {}", e.what());
-        }
+            auto f_movies = std::async(std::launch::async, [&]{ return m_yts->fetchPopular(limit_per_source); });
+            auto f_series = std::async(std::launch::async, [&]{ return m_eztv->fetchPopular(limit_per_source); });
+            auto f_anime  = std::async(std::launch::async, [&]{ return m_nyaa->fetchPopular(limit_per_source); });
+            
+            try {
+                auto movies = f_movies.get();
+                all_content.insert(all_content.end(), movies.begin(), movies.end());
+                spdlog::info("Fetched {} movies from YTS", movies.size());
+            } catch (const std::exception& e) {
+                spdlog::error("Failed to fetch from YTS: {}", e.what());
+            }
 
-        try {
-            auto series = m_eztv->fetchPopular(limit_per_source);
-            all_content.insert(all_content.end(), series.begin(), series.end());
-            spdlog::info("Fetched {} series from EZTV", series.size());
-        } catch (const std::exception& e) {
-            spdlog::error("Failed to fetch from EZTV: {}", e.what());
-        }
+            try {
+                auto series = f_series.get();
+                all_content.insert(all_content.end(), series.begin(), series.end());
+                spdlog::info("Fetched {} series from EZTV", series.size());
+            } catch (const std::exception& e) {
+                spdlog::error("Failed to fetch from EZTV: {}", e.what());
+            }
 
-        try {
-            auto anime = m_nyaa->fetchPopular(limit_per_source);
-            all_content.insert(all_content.end(), anime.begin(), anime.end());
-            spdlog::info("Fetched {} anime from Nyaa", anime.size());
+            try {
+                auto anime = f_anime.get();
+                all_content.insert(all_content.end(), anime.begin(), anime.end());
+                spdlog::info("Fetched {} anime from Nyaa", anime.size());
+            } catch (const std::exception& e) {
+                spdlog::error("Failed to fetch from Nyaa: {}", e.what());
+            }
         } catch (const std::exception& e) {
-            spdlog::error("Failed to fetch from Nyaa: {}", e.what());
+            spdlog::error("Failed to launch async fetches: {}", e.what());
         }
 
         // Sort by rating/seeders
@@ -65,10 +105,7 @@ namespace media::services {
 
         spdlog::info("Total content discovered: {}", all_content.size());
         
-        // Enrich with TMDB
-        for (auto& item : all_content) {
-            m_tmdb->enrichContent(item);
-        }
+        enrichAndDeduplicate(all_content, m_tmdb.get(), m_torrentio.get());
         
         return all_content;
     }
@@ -99,10 +136,7 @@ namespace media::services {
 
         spdlog::info("Search '{}' returned {} results", query, all_results.size());
         
-        // Enrich with TMDB
-        for (auto& item : all_results) {
-            m_tmdb->enrichContent(item);
-        }
+        enrichAndDeduplicate(all_results, m_tmdb.get(), m_torrentio.get());
 
         return all_results;
     }
@@ -110,9 +144,7 @@ namespace media::services {
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchMovies(int limit) {
         try {
             auto results = m_yts->fetchPopular(limit);
-            for (auto& item : results) {
-                m_tmdb->enrichContent(item);
-            }
+            enrichAndDeduplicate(results, m_tmdb.get(), m_torrentio.get());
             return results;
         } catch (const std::exception& e) {
             spdlog::error("Failed to fetch movies: {}", e.what());
@@ -123,9 +155,7 @@ namespace media::services {
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchSeries(int limit) {
         try {
             auto results = m_eztv->fetchPopular(limit);
-            for (auto& item : results) {
-                m_tmdb->enrichContent(item);
-            }
+            enrichAndDeduplicate(results, m_tmdb.get(), m_torrentio.get());
             return results;
         } catch (const std::exception& e) {
             spdlog::error("Failed to fetch series: {}", e.what());
@@ -136,9 +166,7 @@ namespace media::services {
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchAnime(int limit) {
         try {
             auto results = m_nyaa->fetchPopular(limit);
-            for (auto& item : results) {
-                m_tmdb->enrichContent(item);
-            }
+            enrichAndDeduplicate(results, m_tmdb.get(), m_torrentio.get());
             return results;
         } catch (const std::exception& e) {
             spdlog::error("Failed to fetch anime: {}", e.what());

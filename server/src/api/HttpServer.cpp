@@ -18,6 +18,7 @@
 // #include "oatpp-swagger/Controller.hpp"
 
 #include <spdlog/spdlog.h>
+#include <unordered_set>
 
 namespace media::api {
 
@@ -32,23 +33,30 @@ namespace media::api {
     }
 
     // Custom CORS Interceptor for Oatpp v1.3.0 where AllowCorsGlobal doesn't exist natively
-    class CorsInterceptor : public oatpp::web::server::interceptor::ResponseInterceptor {
-    public:
-        std::shared_ptr<OutgoingResponse> intercept(const std::shared_ptr<IncomingRequest>& request,
-                                                    const std::shared_ptr<OutgoingResponse>& response) override {
-            (void)request; // Suppress unused parameter warning
-            response->putHeaderIfNotExists("Access-Control-Allow-Origin", "http://localhost:1420");
-            response->putHeaderIfNotExists("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
-            response->putHeaderIfNotExists("Access-Control-Allow-Headers", "DNT, User-Agent, X-Requested-With, If-Modified-Since, Cache-Control, Content-Type, Range, Authorization");
-            response->putHeaderIfNotExists("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length");
-            response->putHeaderIfNotExists("Access-Control-Max-Age", "1728000");
-            return response;
-        }
-    };
+    namespace {
+        class CorsInterceptor : public oatpp::web::server::interceptor::ResponseInterceptor {
+        public:
+            std::shared_ptr<OutgoingResponse> intercept(const std::shared_ptr<IncomingRequest>& request,
+                                                        const std::shared_ptr<OutgoingResponse>& response) override {
+                static const std::unordered_set<std::string> allowed = {
+                    "http://localhost:1420", "tauri://localhost"
+                };
+                auto origin = request->getHeader("Origin");
+                if (origin && allowed.count(origin->c_str())) {
+                    response->putHeaderIfNotExists("Access-Control-Allow-Origin", origin);
+                }
+                response->putHeaderIfNotExists("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
+                response->putHeaderIfNotExists("Access-Control-Allow-Headers", "DNT, User-Agent, X-Requested-With, If-Modified-Since, Cache-Control, Content-Type, Range, Authorization");
+                response->putHeaderIfNotExists("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length");
+                response->putHeaderIfNotExists("Access-Control-Max-Age", "1728000");
+                return response;
+            }
+        };
+    }
 
     void HttpServer::start() {
-        if (m_should_run) return;
-        m_should_run = true;
+        bool expected = false;
+        if (!m_should_run.compare_exchange_strong(expected, true)) return;
         m_server_thread = std::thread(&HttpServer::run_internal, this);
         m_ws_broadcaster_thread = std::thread(&HttpServer::run_ws_broadcaster, this);
         spdlog::info("HttpServer started on background thread.");
@@ -60,11 +68,16 @@ namespace media::api {
         spdlog::info("Stopping HttpServer...");
         m_should_run = false; 
         
+        auto* s = m_oatpp_server.load();
+        if (s) {
+            s->stop();
+        }
+
         if (m_server_thread.joinable()) {
-            m_server_thread.detach(); 
+            m_server_thread.join(); 
         }
         if (m_ws_broadcaster_thread.joinable()) {
-            m_ws_broadcaster_thread.detach();
+            m_ws_broadcaster_thread.join();
         }
         spdlog::info("HttpServer stopped.");
     }
@@ -85,7 +98,7 @@ namespace media::api {
             */
 
 
-            auto connectionProvider = oatpp::network::tcp::server::ConnectionProvider::createShared({"0.0.0.0", 8000, oatpp::network::Address::IP_4});
+            auto connectionProvider = oatpp::network::tcp::server::ConnectionProvider::createShared({"127.0.0.1", 8000, oatpp::network::Address::IP_4});
 
             // 1. Register API Controllers
             auto torrentController = std::make_shared<TorrentController>(objectMapper, m_engine);
@@ -113,11 +126,13 @@ namespace media::api {
 
             // 4. Create Server
             oatpp::network::Server server(connectionProvider, connectionHandler);
+            m_oatpp_server.store(&server);
             
             spdlog::info("REST API listening on port 8000...");
             
             // 4. Run (Blocking)
             server.run(); 
+            m_oatpp_server.store(nullptr);
 
         } catch (const std::exception& e) {
             spdlog::critical("HttpServer Crash: {}", e.what());

@@ -72,11 +72,18 @@ public:
                     std::string start_str = bytes_range.substr(0, dash_idx);
                     std::string end_str = bytes_range.substr(dash_idx + 1);
                     
-                    if (!start_str.empty()) start = std::stoull(start_str);
-                    if (!end_str.empty()) end = std::stoull(end_str);
+                    try {
+                        if (!start_str.empty()) start = std::stoull(start_str);
+                        if (!end_str.empty()) end = std::stoull(end_str);
+                    } catch (const std::exception& e) {
+                        spdlog::warn("Security: Malformed Range header payload: {}", e.what());
+                        return createResponse(Status::CODE_400, "Invalid Range Format");
+                    }
                 }
             }
         }
+
+        if (end < start) { end = start; }
 
         if (start >= file_size) {
             auto resp = createResponse(Status::CODE_416, "Requested Range Not Satisfiable");

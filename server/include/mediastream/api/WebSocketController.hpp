@@ -106,7 +106,8 @@ public:
         (void)params;
         auto listener = std::make_shared<StatusWebSocketListener>(m_clientsMutex, m_clients);
         // We have to cast const away because Oat++ 1.3.0 passes 'const WebSocket&', but 'setListener' requires non-const or is called internally
-        // Actually, oatpp 1.3.0 does: const_cast<WebSocket*>(&socket)->setListener(listener);
+        // Why it is safe: socket lifetime is guaranteed by the connection handler for the duration of onAfterCreate and onBeforeDestroy.
+        // TODO: Technical debt - remove const_cast when oatpp is upgraded to a version where this is cleanly typed.
         auto* mutableSocket = const_cast<oatpp::websocket::WebSocket*>(&socket);
         listener->setSocket(mutableSocket);
         mutableSocket->setListener(listener);

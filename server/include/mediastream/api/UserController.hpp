@@ -74,7 +74,10 @@ private:
         m.tmdb_id = j.value("tmdb_id", "");
         m.language = j.value("language", "en");
         
-        m.type = media::database::ContentType::MOVIE; // Default
+        std::string typeStr = j.value("type", "MOVIE");
+        if (typeStr == "SERIES") m.type = media::database::ContentType::SERIES;
+        else if (typeStr == "ANIME") m.type = media::database::ContentType::ANIME;
+        else m.type = media::database::ContentType::MOVIE;
         
         return m;
     }

@@ -138,6 +138,21 @@ public:
     }
 
     // PIMPL Implementation
+
+    namespace {
+        MediaItem rowToMediaItem(const oatpp::Object<MediaItemDto>& row) {
+            return rowToMediaItem(row);
+        }
+
+        TorrentInfo rowToTorrentInfo(const oatpp::Object<TorrentInfoDto>& row) {
+            return rowToTorrentInfo(row);
+        }
+
+        Episode rowToEpisode(const oatpp::Object<EpisodeDto>& row) {
+            return rowToEpisode(row);
+        }
+    }
+
     class Database::Impl {
     public:
         std::shared_ptr<oatpp::sqlite::Executor> executor;
@@ -168,6 +183,11 @@ public:
     // Initialize database schema
     void Database::initialize() {
         spdlog::info("Creating database schema...");
+
+        m_impl->executeSQL("PRAGMA journal_mode=WAL");
+        m_impl->executeSQL("PRAGMA synchronous=NORMAL");
+        m_impl->executeSQL("PRAGMA foreign_keys=ON");
+
 
         // Media Items Table
         m_impl->executeSQL(R"(
@@ -378,24 +398,7 @@ public:
             auto dataset = result->fetch<oatpp::Vector<oatpp::Object<MediaItemDto>>>();
             if (dataset && dataset->size() > 0) {
                 auto row = dataset->front();
-                MediaItem item;
-                item.id = row->id ? *row->id : 0;
-                item.type = stringToContentType(row->type ? row->type->c_str() : "");
-                item.title = row->title ? row->title->c_str() : "";
-                item.original_title = row->original_title ? row->original_title->c_str() : "";
-                item.year = row->year ? *row->year : 0;
-                item.description = row->description ? row->description->c_str() : "";
-                item.poster_url = row->poster_url ? row->poster_url->c_str() : "";
-                item.backdrop_url = row->backdrop_url ? row->backdrop_url->c_str() : "";
-                item.rating = row->rating ? *row->rating : 0.0f;
-                item.genres = row->genres ? row->genres->c_str() : "";
-                item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
-                item.tmdb_id = row->tmdb_id ? row->tmdb_id->c_str() : "";
-                item.imdb_id = row->imdb_id ? row->imdb_id->c_str() : "";
-                item.language = row->language ? row->language->c_str() : "";
-                item.created_at = row->created_at ? *row->created_at : 0;
-                item.updated_at = row->updated_at ? *row->updated_at : 0;
-                return item;
+                return rowToMediaItem(row);
             }
         }
         return std::nullopt;
@@ -410,24 +413,7 @@ public:
             auto dataset = result->fetch<oatpp::Vector<oatpp::Object<MediaItemDto>>>();
             if (dataset && dataset->size() > 0) {
                 auto row = dataset->front();
-                MediaItem item;
-                item.id = row->id ? *row->id : 0;
-                item.type = stringToContentType(row->type ? row->type->c_str() : "");
-                item.title = row->title ? row->title->c_str() : "";
-                item.original_title = row->original_title ? row->original_title->c_str() : "";
-                item.year = row->year ? *row->year : 0;
-                item.description = row->description ? row->description->c_str() : "";
-                item.poster_url = row->poster_url ? row->poster_url->c_str() : "";
-                item.backdrop_url = row->backdrop_url ? row->backdrop_url->c_str() : "";
-                item.rating = row->rating ? *row->rating : 0.0f;
-                item.genres = row->genres ? row->genres->c_str() : "";
-                item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
-                item.tmdb_id = row->tmdb_id ? row->tmdb_id->c_str() : "";
-                item.imdb_id = row->imdb_id ? row->imdb_id->c_str() : "";
-                item.language = row->language ? row->language->c_str() : "";
-                item.created_at = row->created_at ? *row->created_at : 0;
-                item.updated_at = row->updated_at ? *row->updated_at : 0;
-                return item;
+                return rowToMediaItem(row);
             }
         }
         return std::nullopt;
@@ -442,24 +428,7 @@ public:
             auto dataset = result->fetch<oatpp::Vector<oatpp::Object<MediaItemDto>>>();
             if (dataset && dataset->size() > 0) {
                 auto row = dataset->front();
-                MediaItem item;
-                item.id = row->id ? *row->id : 0;
-                item.type = stringToContentType(row->type ? row->type->c_str() : "");
-                item.title = row->title ? row->title->c_str() : "";
-                item.original_title = row->original_title ? row->original_title->c_str() : "";
-                item.year = row->year ? *row->year : 0;
-                item.description = row->description ? row->description->c_str() : "";
-                item.poster_url = row->poster_url ? row->poster_url->c_str() : "";
-                item.backdrop_url = row->backdrop_url ? row->backdrop_url->c_str() : "";
-                item.rating = row->rating ? *row->rating : 0.0f;
-                item.genres = row->genres ? row->genres->c_str() : "";
-                item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
-                item.tmdb_id = row->tmdb_id ? row->tmdb_id->c_str() : "";
-                item.imdb_id = row->imdb_id ? row->imdb_id->c_str() : "";
-                item.language = row->language ? row->language->c_str() : "";
-                item.created_at = row->created_at ? *row->created_at : 0;
-                item.updated_at = row->updated_at ? *row->updated_at : 0;
-                return item;
+                return rowToMediaItem(row);
             }
         }
         return std::nullopt;
@@ -475,24 +444,7 @@ public:
             auto dataset = result->fetch<oatpp::Vector<oatpp::Object<MediaItemDto>>>();
             if (dataset) {
                 for (auto& row : *dataset) {
-                    MediaItem item;
-                    item.id = row->id ? *row->id : 0;
-                    item.type = stringToContentType(row->type ? row->type->c_str() : "");
-                    item.title = row->title ? row->title->c_str() : "";
-                    item.original_title = row->original_title ? row->original_title->c_str() : "";
-                    item.year = row->year ? *row->year : 0;
-                    item.description = row->description ? row->description->c_str() : "";
-                    item.poster_url = row->poster_url ? row->poster_url->c_str() : "";
-                    item.backdrop_url = row->backdrop_url ? row->backdrop_url->c_str() : "";
-                    item.rating = row->rating ? *row->rating : 0.0f;
-                    item.genres = row->genres ? row->genres->c_str() : "";
-                    item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
-                    item.tmdb_id = row->tmdb_id ? row->tmdb_id->c_str() : "";
-                    item.imdb_id = row->imdb_id ? row->imdb_id->c_str() : "";
-                    item.language = row->language ? row->language->c_str() : "";
-                    item.created_at = row->created_at ? *row->created_at : 0;
-                    item.updated_at = row->updated_at ? *row->updated_at : 0;
-                    items.push_back(item);
+                    items.push_back(rowToMediaItem(row));
                 }
             }
         }
@@ -510,24 +462,7 @@ public:
             auto dataset = result->fetch<oatpp::Vector<oatpp::Object<MediaItemDto>>>();
             if (dataset) {
                 for (auto& row : *dataset) {
-                    MediaItem item;
-                    item.id = row->id ? *row->id : 0;
-                    item.type = stringToContentType(row->type ? row->type->c_str() : "");
-                    item.title = row->title ? row->title->c_str() : "";
-                    item.original_title = row->original_title ? row->original_title->c_str() : "";
-                    item.year = row->year ? *row->year : 0;
-                    item.description = row->description ? row->description->c_str() : "";
-                    item.poster_url = row->poster_url ? row->poster_url->c_str() : "";
-                    item.backdrop_url = row->backdrop_url ? row->backdrop_url->c_str() : "";
-                    item.rating = row->rating ? *row->rating : 0.0f;
-                    item.genres = row->genres ? row->genres->c_str() : "";
-                    item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
-                    item.tmdb_id = row->tmdb_id ? row->tmdb_id->c_str() : "";
-                    item.imdb_id = row->imdb_id ? row->imdb_id->c_str() : "";
-                    item.language = row->language ? row->language->c_str() : "";
-                    item.created_at = row->created_at ? *row->created_at : 0;
-                    item.updated_at = row->updated_at ? *row->updated_at : 0;
-                    items.push_back(item);
+                    items.push_back(rowToMediaItem(row));
                 }
             }
         }
@@ -558,7 +493,9 @@ public:
     }
 
     void Database::deleteMediaItem(int id) {
-        m_impl->client->executeQuery(oatpp::String("DELETE FROM media_items WHERE id = :id"), std::unordered_map<oatpp::String, oatpp::Void>{{"id", oatpp::Int32(id)}});
+        auto connection = m_impl->executor->getConnection();
+        m_impl->client->executeQuery(oatpp::String("PRAGMA foreign_keys=ON"), std::unordered_map<oatpp::String, oatpp::Void>{}, connection);
+        m_impl->client->executeQuery(oatpp::String("DELETE FROM media_items WHERE id = :id"), std::unordered_map<oatpp::String, oatpp::Void>{{"id", oatpp::Int32(id)}}, connection);
     }
 
     // Torrents
@@ -586,11 +523,13 @@ public:
             });
 
         if (result->isSuccess()) {
-            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT last_insert_rowid() AS value"), std::unordered_map<oatpp::String, oatpp::Void>{});
+            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT id AS value FROM torrents WHERE info_hash = :info_hash"), std::unordered_map<oatpp::String, oatpp::Void>{
+                {"info_hash", oatpp::String(torrent.info_hash)}
+            });
             if (idResult->isSuccess()) {
-                auto dataset = idResult->fetch<oatpp::Vector<oatpp::Object<Int64ResultDto>>>();
+                auto dataset = idResult->fetch<oatpp::Vector<oatpp::Object<IntResultDto>>>();
                 if (dataset && dataset->size() > 0) {
-                    return static_cast<int>(dataset->front()->value ? *dataset->front()->value : 0);
+                    return dataset->front()->value ? *dataset->front()->value : 0;
                 }
             }
         }
@@ -606,23 +545,7 @@ public:
             auto dataset = result->fetch<oatpp::Vector<oatpp::Object<TorrentInfoDto>>>();
             if (dataset && dataset->size() > 0) {
                 auto row = dataset->front();
-                TorrentInfo torrent;
-                torrent.id = row->id ? *row->id : 0;
-                torrent.media_id = row->media_id ? *row->media_id : 0;
-                torrent.info_hash = row->info_hash ? row->info_hash->c_str() : "";
-                torrent.magnet_uri = row->magnet_uri ? row->magnet_uri->c_str() : "";
-                torrent.quality = row->quality ? row->quality->c_str() : "";
-                torrent.type = row->type ? row->type->c_str() : "";
-                torrent.size_bytes = row->size_bytes ? *row->size_bytes : 0;
-                torrent.seeders = row->seeders ? *row->seeders : 0;
-                torrent.leechers = row->leechers ? *row->leechers : 0;
-                torrent.source = row->source ? row->source->c_str() : "";
-                torrent.status = stringToDownloadStatus(row->status ? row->status->c_str() : "");
-                torrent.progress = row->progress ? *row->progress : 0.0f;
-                torrent.file_path = row->file_path ? row->file_path->c_str() : "";
-                torrent.created_at = row->created_at ? *row->created_at : 0;
-                torrent.updated_at = row->updated_at ? *row->updated_at : 0;
-                return torrent;
+                return rowToTorrentInfo(row);
             }
         }
         return std::nullopt;
@@ -637,23 +560,7 @@ public:
             auto dataset = result->fetch<oatpp::Vector<oatpp::Object<TorrentInfoDto>>>();
             if (dataset && dataset->size() > 0) {
                 auto row = dataset->front();
-                TorrentInfo torrent;
-                torrent.id = row->id ? *row->id : 0;
-                torrent.media_id = row->media_id ? *row->media_id : 0;
-                torrent.info_hash = row->info_hash ? row->info_hash->c_str() : "";
-                torrent.magnet_uri = row->magnet_uri ? row->magnet_uri->c_str() : "";
-                torrent.quality = row->quality ? row->quality->c_str() : "";
-                torrent.type = row->type ? row->type->c_str() : "";
-                torrent.size_bytes = row->size_bytes ? *row->size_bytes : 0;
-                torrent.seeders = row->seeders ? *row->seeders : 0;
-                torrent.leechers = row->leechers ? *row->leechers : 0;
-                torrent.source = row->source ? row->source->c_str() : "";
-                torrent.status = stringToDownloadStatus(row->status ? row->status->c_str() : "");
-                torrent.progress = row->progress ? *row->progress : 0.0f;
-                torrent.file_path = row->file_path ? row->file_path->c_str() : "";
-                torrent.created_at = row->created_at ? *row->created_at : 0;
-                torrent.updated_at = row->updated_at ? *row->updated_at : 0;
-                return torrent;
+                return rowToTorrentInfo(row);
             }
         }
         return std::nullopt;
@@ -669,23 +576,7 @@ public:
             auto dataset = result->fetch<oatpp::Vector<oatpp::Object<TorrentInfoDto>>>();
             if (dataset) {
                 for(auto& row : *dataset) {
-                    TorrentInfo torrent;
-                    torrent.id = row->id ? *row->id : 0;
-                    torrent.media_id = row->media_id ? *row->media_id : 0;
-                    torrent.info_hash = row->info_hash ? row->info_hash->c_str() : "";
-                    torrent.magnet_uri = row->magnet_uri ? row->magnet_uri->c_str() : "";
-                    torrent.quality = row->quality ? row->quality->c_str() : "";
-                    torrent.type = row->type ? row->type->c_str() : "";
-                    torrent.size_bytes = row->size_bytes ? *row->size_bytes : 0;
-                    torrent.seeders = row->seeders ? *row->seeders : 0;
-                    torrent.leechers = row->leechers ? *row->leechers : 0;
-                    torrent.source = row->source ? row->source->c_str() : "";
-                    torrent.status = stringToDownloadStatus(row->status ? row->status->c_str() : "");
-                    torrent.progress = row->progress ? *row->progress : 0.0f;
-                    torrent.file_path = row->file_path ? row->file_path->c_str() : "";
-                    torrent.created_at = row->created_at ? *row->created_at : 0;
-                    torrent.updated_at = row->updated_at ? *row->updated_at : 0;
-                    torrents.push_back(torrent);
+                    torrents.push_back(rowToTorrentInfo(row));
                 }
             }
         }
@@ -700,23 +591,7 @@ public:
             auto dataset = result->fetch<oatpp::Vector<oatpp::Object<TorrentInfoDto>>>();
             if (dataset) {
                 for(auto& row : *dataset) {
-                    TorrentInfo torrent;
-                    torrent.id = row->id ? *row->id : 0;
-                    torrent.media_id = row->media_id ? *row->media_id : 0;
-                    torrent.info_hash = row->info_hash ? row->info_hash->c_str() : "";
-                    torrent.magnet_uri = row->magnet_uri ? row->magnet_uri->c_str() : "";
-                    torrent.quality = row->quality ? row->quality->c_str() : "";
-                    torrent.type = row->type ? row->type->c_str() : "";
-                    torrent.size_bytes = row->size_bytes ? *row->size_bytes : 0;
-                    torrent.seeders = row->seeders ? *row->seeders : 0;
-                    torrent.leechers = row->leechers ? *row->leechers : 0;
-                    torrent.source = row->source ? row->source->c_str() : "";
-                    torrent.status = stringToDownloadStatus(row->status ? row->status->c_str() : "");
-                    torrent.progress = row->progress ? *row->progress : 0.0f;
-                    torrent.file_path = row->file_path ? row->file_path->c_str() : "";
-                    torrent.created_at = row->created_at ? *row->created_at : 0;
-                    torrent.updated_at = row->updated_at ? *row->updated_at : 0;
-                    torrents.push_back(torrent);
+                    torrents.push_back(rowToTorrentInfo(row));
                 }
             }
         }
@@ -831,24 +706,7 @@ public:
             auto dataset = result->fetch<oatpp::Vector<oatpp::Object<MediaItemDto>>>();
             if (dataset) {
                 for (auto& row : *dataset) {
-                    MediaItem item;
-                    item.id = row->id ? *row->id : 0;
-                    item.type = stringToContentType(row->type ? row->type->c_str() : "");
-                    item.title = row->title ? row->title->c_str() : "";
-                    item.original_title = row->original_title ? row->original_title->c_str() : "";
-                    item.year = row->year ? *row->year : 0;
-                    item.description = row->description ? row->description->c_str() : "";
-                    item.poster_url = row->poster_url ? row->poster_url->c_str() : "";
-                    item.backdrop_url = row->backdrop_url ? row->backdrop_url->c_str() : "";
-                    item.rating = row->rating ? *row->rating : 0.0f;
-                    item.genres = row->genres ? row->genres->c_str() : "";
-                    item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
-                    item.tmdb_id = row->tmdb_id ? row->tmdb_id->c_str() : "";
-                    item.imdb_id = row->imdb_id ? row->imdb_id->c_str() : "";
-                    item.language = row->language ? row->language->c_str() : "";
-                    item.created_at = row->created_at ? *row->created_at : 0;
-                    item.updated_at = row->updated_at ? *row->updated_at : 0;
-                    items.push_back(item);
+                    items.push_back(rowToMediaItem(row));
                 }
             }
         }
@@ -899,24 +757,7 @@ public:
             auto dataset = result->fetch<oatpp::Vector<oatpp::Object<MediaItemDto>>>();
             if (dataset) {
                 for (auto& row : *dataset) {
-                    MediaItem item;
-                    item.id = row->id ? *row->id : 0;
-                    item.type = stringToContentType(row->type ? row->type->c_str() : "");
-                    item.title = row->title ? row->title->c_str() : "";
-                    item.original_title = row->original_title ? row->original_title->c_str() : "";
-                    item.year = row->year ? *row->year : 0;
-                    item.description = row->description ? row->description->c_str() : "";
-                    item.poster_url = row->poster_url ? row->poster_url->c_str() : "";
-                    item.backdrop_url = row->backdrop_url ? row->backdrop_url->c_str() : "";
-                    item.rating = row->rating ? *row->rating : 0.0f;
-                    item.genres = row->genres ? row->genres->c_str() : "";
-                    item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
-                    item.tmdb_id = row->tmdb_id ? row->tmdb_id->c_str() : "";
-                    item.imdb_id = row->imdb_id ? row->imdb_id->c_str() : "";
-                    item.language = row->language ? row->language->c_str() : "";
-                    item.created_at = row->created_at ? *row->created_at : 0;
-                    item.updated_at = row->updated_at ? *row->updated_at : 0;
-                    items.push_back(item);
+                    items.push_back(rowToMediaItem(row));
                 }
             }
         }
@@ -943,11 +784,13 @@ public:
             });
 
         if (result->isSuccess()) {
-            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT last_insert_rowid() AS value"), std::unordered_map<oatpp::String, oatpp::Void>{});
+            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT id AS value FROM torrents WHERE info_hash = :info_hash"), std::unordered_map<oatpp::String, oatpp::Void>{
+                {"info_hash", oatpp::String(torrent.info_hash)}
+            });
             if (idResult->isSuccess()) {
-                auto dataset = idResult->fetch<oatpp::Vector<oatpp::Object<Int64ResultDto>>>();
+                auto dataset = idResult->fetch<oatpp::Vector<oatpp::Object<IntResultDto>>>();
                 if (dataset && dataset->size() > 0) {
-                    return static_cast<int>(dataset->front()->value ? *dataset->front()->value : 0);
+                    return dataset->front()->value ? *dataset->front()->value : 0;
                 }
             }
         }
@@ -963,18 +806,7 @@ public:
             auto dataset = result->fetch<oatpp::Vector<oatpp::Object<EpisodeDto>>>();
             if (dataset && dataset->size() > 0) {
                 auto row = dataset->front();
-                Episode episode;
-                episode.id = row->id ? *row->id : 0;
-                episode.media_id = row->media_id ? *row->media_id : 0;
-                episode.season_number = row->season_number ? *row->season_number : 0;
-                episode.episode_number = row->episode_number ? *row->episode_number : 0;
-                episode.title = row->title ? row->title->c_str() : "";
-                episode.description = row->description ? row->description->c_str() : "";
-                episode.still_url = row->still_url ? row->still_url->c_str() : "";
-                episode.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
-                episode.air_date = row->air_date ? row->air_date->c_str() : "";
-                episode.created_at = row->created_at ? *row->created_at : 0;
-                return episode;
+                return rowToEpisode(row);
             }
         }
         return std::nullopt;
@@ -991,18 +823,7 @@ public:
             auto dataset = result->fetch<oatpp::Vector<oatpp::Object<EpisodeDto>>>();
             if (dataset) {
                 for (auto& row : *dataset) {
-                    Episode episode;
-                    episode.id = row->id ? *row->id : 0;
-                    episode.media_id = row->media_id ? *row->media_id : 0;
-                    episode.season_number = row->season_number ? *row->season_number : 0;
-                    episode.episode_number = row->episode_number ? *row->episode_number : 0;
-                    episode.title = row->title ? row->title->c_str() : "";
-                    episode.description = row->description ? row->description->c_str() : "";
-                    episode.still_url = row->still_url ? row->still_url->c_str() : "";
-                    episode.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
-                    episode.air_date = row->air_date ? row->air_date->c_str() : "";
-                    episode.created_at = row->created_at ? *row->created_at : 0;
-                    episodes.push_back(episode);
+                    episodes.push_back(rowToEpisode(row));
                 }
             }
         }
@@ -1027,7 +848,7 @@ public:
 
     // Statistics
     int Database::getMediaCount(ContentType type) {
-        auto result = m_impl->client->executeQuery(oatpp::String("SELECT COUNT(*) FROM media_items WHERE type = :type"), std::unordered_map<oatpp::String, oatpp::Void>{
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT COUNT(*) AS value FROM media_items WHERE type = :type"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"type", oatpp::String(contentTypeToString(type))}
             });
 
@@ -1059,24 +880,7 @@ public:
             auto dataset = result->fetch<oatpp::Vector<oatpp::Object<MediaItemDto>>>();
             if (dataset) {
                 for (auto& row : *dataset) {
-                    MediaItem item;
-                    item.id = row->id ? *row->id : 0;
-                    item.type = stringToContentType(row->type ? row->type->c_str() : "");
-                    item.title = row->title ? row->title->c_str() : "";
-                    item.original_title = row->original_title ? row->original_title->c_str() : "";
-                    item.year = row->year ? *row->year : 0;
-                    item.description = row->description ? row->description->c_str() : "";
-                    item.poster_url = row->poster_url ? row->poster_url->c_str() : "";
-                    item.backdrop_url = row->backdrop_url ? row->backdrop_url->c_str() : "";
-                    item.rating = row->rating ? *row->rating : 0.0f;
-                    item.genres = row->genres ? row->genres->c_str() : "";
-                    item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
-                    item.tmdb_id = row->tmdb_id ? row->tmdb_id->c_str() : "";
-                    item.imdb_id = row->imdb_id ? row->imdb_id->c_str() : "";
-                    item.language = row->language ? row->language->c_str() : "";
-                    item.created_at = row->created_at ? *row->created_at : 0;
-                    item.updated_at = row->updated_at ? *row->updated_at : 0;
-                    items.push_back(item);
+                    items.push_back(rowToMediaItem(row));
                 }
             }
         }

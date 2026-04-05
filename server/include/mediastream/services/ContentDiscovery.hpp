@@ -95,6 +95,24 @@ namespace media::services {
         std::unique_ptr<Impl> m_impl;
     };
 
+    // Torrentio API Client (Multi-source Stremio Addon)
+    class TorrentioClient : public IContentDiscovery {
+    public:
+        TorrentioClient();
+        ~TorrentioClient() override;
+
+        std::vector<DiscoveredContent> fetchPopular(int limit = 20) override;
+        std::vector<DiscoveredContent> search(const std::string& query, int limit = 20) override;
+        std::optional<DiscoveredContent> getById(const std::string& id) override;
+
+        // Specific Torrentio Fetch for precise matching
+        std::vector<DiscoveredContent> searchTorrentsByIMDB(const std::string& imdb_id, const std::string& type, int season = -1, int episode = -1);
+
+    private:
+        class Impl;
+        std::unique_ptr<Impl> m_impl;
+    };
+
     class TMDBFetcher;
 
     // Unified Content Discovery Manager
@@ -118,6 +136,7 @@ namespace media::services {
         std::unique_ptr<YTSClient> m_yts;
         std::unique_ptr<EZTVClient> m_eztv;
         std::unique_ptr<NyaaClient> m_nyaa;
+        std::unique_ptr<TorrentioClient> m_torrentio;
         std::unique_ptr<TMDBFetcher> m_tmdb;
     };
 

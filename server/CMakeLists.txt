@@ -6,14 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Compiler Hardening (GCC/Clang)
-# -Wall -Wextra: Enable warnings
-# -Werror: Treat warnings as errors (Strict discipline)
-# -fstack-protector-strong: Buffer overflow protection
-if(MSVC)
-    add_compile_options(/W4 /WX)
-else()
-    add_compile_options(-Wall -Wextra -Werror -fstack-protector-strong)
-endif()
+# Applied via target_compile_options securely below
 
 # --- 2. Dependencies (Conan) ---
 # Assuming you use the conan_provider.cmake or conan_toolchain.cmake
@@ -21,7 +14,7 @@ find_package(LibtorrentRasterbar REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 find_package(oatpp REQUIRED)
-find_package(oatpp-swagger REQUIRED)
+
 find_package(oatpp-sqlite REQUIRED)
 find_package(oatpp-websocket REQUIRED)
 find_package(CURL REQUIRED)
@@ -39,6 +32,7 @@ add_library(MediaCore
     src/services/YTSClient.cpp
     src/services/EZTVClient.cpp
     src/services/NyaaClient.cpp
+    src/services/TorrentioClient.cpp
     src/services/ContentDiscoveryManager.cpp
     src/services/TMDBFetcher.cpp
     # Add future source files here
@@ -70,7 +64,7 @@ target_link_libraries(mediastream_server PRIVATE
     MediaCore
     spdlog::spdlog
     oatpp::oatpp             # Main/HttpServer
-    oatpp::oatpp-swagger     # Swagger UI
+
     oatpp::oatpp-sqlite      # Database
     oatpp::oatpp-websocket   # WebSockets
 )

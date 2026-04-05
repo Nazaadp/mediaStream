@@ -30,6 +30,19 @@ namespace media::core {
     }
 
     // --- CONSTRUCTOR ---
+    static int findLargestFileIndex(const lt::file_storage& finfo) {
+        if (finfo.num_files() == 0) return -1;
+        int largest_index = -1;
+        int64_t largest_size = 0;
+        for (int i = 0; i < finfo.num_files(); ++i) {
+            if (finfo.file_size(lt::file_index_t(i)) > largest_size) {
+                largest_size = finfo.file_size(lt::file_index_t(i));
+                largest_index = i;
+            }
+        }
+        return largest_index;
+    }
+    
     TorrentEngine::TorrentEngine(const std::filesystem::path& download_dir) 
         : m_download_dir(download_dir) {
         
@@ -76,7 +89,7 @@ namespace media::core {
             std::vector<lt::torrent_handle> handles = m_session.get_torrents();
             for (const auto& h : handles) {
                 if (h.is_valid() && to_hex_string(h.info_hash()) == incoming_hash) {
-                    spdlog::info("Torrent already exists in session. Skiping add: {}", incoming_hash);
+                    spdlog::info("Torrent already exists in session. Skipping add: {}", incoming_hash);
                     return; // Already downloading or seeding
                 }
             }
@@ -157,17 +170,7 @@ namespace media::core {
                 if (!h.torrent_file()) return std::nullopt; // Metadata not yet downloaded
                 
                 auto finfo = h.torrent_file()->files();
-                if (finfo.num_files() == 0) return std::nullopt;
-
-                int largest_index = -1;
-                int64_t largest_size = 0;
-
-                for (int i = 0; i < finfo.num_files(); ++i) {
-                    if (finfo.file_size(lt::file_index_t(i)) > largest_size) {
-                        largest_size = finfo.file_size(lt::file_index_t(i));
-                        largest_index = i;
-                    }
-                }
+                int largest_index = findLargestFileIndex(finfo);
 
                 if (largest_index != -1) {
                     std::filesystem::path full_path = m_download_dir;
@@ -189,17 +192,7 @@ namespace media::core {
                 if (!h.torrent_file()) return;
                 
                 auto finfo = h.torrent_file()->files();
-                if (finfo.num_files() == 0) return;
-
-                int largest_index = -1;
-                int64_t largest_size = 0;
-
-                for (int i = 0; i < finfo.num_files(); ++i) {
-                    if (finfo.file_size(lt::file_index_t(i)) > largest_size) {
-                        largest_size = finfo.file_size(lt::file_index_t(i));
-                        largest_index = i;
-                    }
-                }
+                int largest_index = findLargestFileIndex(finfo);
 
                 if (largest_index != -1) {
                     // Calculate the absolute byte offset within the torrent
@@ -226,8 +219,8 @@ namespace media::core {
                         }
                     }
 
-                    // Block and wait for the piece to be downloaded (max 15 seconds limit so http server thread doesn't hang forever)
-                    int max_wait_ms = 15000;
+                    // Block and wait for the piece to be downloaded (max 0.5 seconds limit to prevent oatpp HTTP thread starvation)
+                    int max_wait_ms = 500;
                     int waited = 0;
                     while (!h.have_piece(piece_idx) && waited < max_wait_ms) {
                         std::this_thread::sleep_for(std::chrono::milliseconds(100));

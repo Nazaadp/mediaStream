@@ -9,6 +9,7 @@ namespace media::core { class TorrentEngine; }
 namespace media::services { class ContentDiscoveryManager; }
 namespace media::database { class Database; }
 namespace media::api { class WebSocketController; }
+namespace oatpp::network { class Server; }
 
 namespace media::api {
 
@@ -35,6 +36,7 @@ namespace media::api {
         std::thread m_server_thread;
         std::thread m_ws_broadcaster_thread;
         std::atomic<bool> m_should_run;
+        std::atomic<oatpp::network::Server*> m_oatpp_server{nullptr};
     };
 
 } // namespace media::api
