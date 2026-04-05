@@ -141,15 +141,59 @@ public:
 
     namespace {
         MediaItem rowToMediaItem(const oatpp::Object<MediaItemDto>& row) {
-            return rowToMediaItem(row);
+            MediaItem item;
+            item.id = row->id ? *row->id : 0;
+            item.type = stringToContentType(row->type ? *row->type : "MOVIE");
+            item.title = row->title ? *row->title : "";
+            item.original_title = row->original_title ? *row->original_title : "";
+            item.year = row->year ? *row->year : 0;
+            item.description = row->description ? *row->description : "";
+            item.poster_url = row->poster_url ? *row->poster_url : "";
+            item.backdrop_url = row->backdrop_url ? *row->backdrop_url : "";
+            item.rating = row->rating ? *row->rating : 0.0f;
+            item.genres = row->genres ? *row->genres : "";
+            item.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
+            item.tmdb_id = row->tmdb_id ? *row->tmdb_id : "";
+            item.imdb_id = row->imdb_id ? *row->imdb_id : "";
+            item.language = row->language ? *row->language : "";
+            item.created_at = row->created_at ? *row->created_at : 0;
+            item.updated_at = row->updated_at ? *row->updated_at : 0;
+            return item;
         }
 
         TorrentInfo rowToTorrentInfo(const oatpp::Object<TorrentInfoDto>& row) {
-            return rowToTorrentInfo(row);
+            TorrentInfo info;
+            info.id = row->id ? *row->id : 0;
+            info.media_id = row->media_id ? *row->media_id : 0;
+            info.info_hash = row->info_hash ? *row->info_hash : "";
+            info.magnet_uri = row->magnet_uri ? *row->magnet_uri : "";
+            info.quality = row->quality ? *row->quality : "";
+            info.type = row->type ? *row->type : "";
+            info.size_bytes = row->size_bytes ? *row->size_bytes : 0;
+            info.seeders = row->seeders ? *row->seeders : 0;
+            info.leechers = row->leechers ? *row->leechers : 0;
+            info.source = row->source ? *row->source : "";
+            info.status = stringToDownloadStatus(row->status ? *row->status : "PENDING");
+            info.progress = row->progress ? *row->progress : 0.0f;
+            info.file_path = row->file_path ? *row->file_path : "";
+            info.created_at = row->created_at ? *row->created_at : 0;
+            info.updated_at = row->updated_at ? *row->updated_at : 0;
+            return info;
         }
 
         Episode rowToEpisode(const oatpp::Object<EpisodeDto>& row) {
-            return rowToEpisode(row);
+            Episode ep;
+            ep.id = row->id ? *row->id : 0;
+            ep.media_id = row->media_id ? *row->media_id : 0;
+            ep.season_number = row->season_number ? *row->season_number : 0;
+            ep.episode_number = row->episode_number ? *row->episode_number : 0;
+            ep.title = row->title ? *row->title : "";
+            ep.description = row->description ? *row->description : "";
+            ep.still_url = row->still_url ? *row->still_url : "";
+            ep.runtime_minutes = row->runtime_minutes ? *row->runtime_minutes : 0;
+            ep.air_date = row->air_date ? *row->air_date : "";
+            ep.created_at = row->created_at ? *row->created_at : 0;
+            return ep;
         }
     }
 
