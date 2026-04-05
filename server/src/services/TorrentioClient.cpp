@@ -45,31 +45,41 @@ namespace media::services {
         const std::string BASE_URL = "https://torrentio.strem.fun";
 
         int64_t parseSizeStr(const std::string& title) {
-            std::regex size_regex(R"(💾\s*([\d.]+)\s*([KMGT]?i?B))", std::regex_constants::icase);
-            std::smatch match;
-            if (std::regex_search(title, match, size_regex)) {
-                double num = std::stod(match[1].str());
-                std::string unit = match[2].str();
-                std::transform(unit.begin(), unit.end(), unit.begin(), ::toupper);
-                
-                int64_t multiplier = 1;
-                if (unit.find("K") != std::string::npos) multiplier = 1024LL;
-                else if (unit.find("M") != std::string::npos) multiplier = 1024LL * 1024LL;
-                else if (unit.find("G") != std::string::npos) multiplier = 1024LL * 1024LL * 1024LL;
-                else if (unit.find("T") != std::string::npos) multiplier = 1024LL * 1024LL * 1024LL * 1024LL;
-
-                return static_cast<int64_t>(num * multiplier);
+            const std::string units[] = {"GB", "MB", "KB"};
+            for (const auto& unit : units) {
+                auto unit_pos = title.find(" " + unit);
+                if (unit_pos != std::string::npos && unit_pos > 0) {
+                    size_t start = unit_pos - 1;
+                    while (start > 0 && (isdigit(title[start]) || title[start] == '.')) {
+                        start--;
+                    }
+                    if (!isdigit(title[start])) start++;
+                    try {
+                        double num = std::stod(title.substr(start, unit_pos - start));
+                        if (unit == "GB") return static_cast<int64_t>(num * 1024 * 1024 * 1024);
+                        if (unit == "MB") return static_cast<int64_t>(num * 1024 * 1024);
+                        if (unit == "KB") return static_cast<int64_t>(num * 1024);
+                    } catch(...) {}
+                }
             }
             return 0;
         }
 
         int parseSeeders(const std::string& title) {
-            std::regex seeders_regex(R"(👤\s*(\d+))");
-            std::smatch match;
-            if (std::regex_search(title, match, seeders_regex)) {
-                try {
-                    return std::stoi(match[1].str());
-                } catch (...) { return 0; }
+            // The emoji 👤 is represented as the UTF-8 bytes \xF0\x9F\x91\xA4.
+            auto pos = title.find("👤");
+            if (pos != std::string::npos) {
+                size_t start = pos + 4; // Emoji length
+                while (start < title.length() && isspace((unsigned char)title[start])) start++;
+                
+                size_t end = start;
+                while (end < title.length() && isdigit((unsigned char)title[end])) end++;
+                
+                if (start < end) {
+                    try {
+                        return std::stoi(title.substr(start, end - start));
+                    } catch(...) {}
+                }
             }
             return 0;
         }

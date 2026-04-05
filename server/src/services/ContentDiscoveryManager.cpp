@@ -30,8 +30,11 @@ namespace media::services {
 
                 std::unordered_map<std::string, TorrentQuality> deduped;
                 for (const auto& t : item.torrents) {
-                    if (deduped.find(t.hash) == deduped.end() || t.seeders > deduped[t.hash].seeders) {
-                        deduped[t.hash] = t;
+                    std::string hash_lower = t.hash;
+                    std::transform(hash_lower.begin(), hash_lower.end(), hash_lower.begin(), ::tolower);
+
+                    if (deduped.find(hash_lower) == deduped.end() || t.seeders > deduped[hash_lower].seeders) {
+                        deduped[hash_lower] = t;
                     }
                 }
                 item.torrents.clear();
