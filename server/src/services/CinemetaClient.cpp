@@ -69,6 +69,7 @@ namespace media::services {
                     if (meta.contains("imdbRating")) {
                         try {
                             content.rating = std::stof(meta["imdbRating"].get<std::string>());
+                        } catch (...) { content.rating = 0.0f; }
                     }
                     
                     if (meta.contains("type") && meta["type"].is_string()) {
