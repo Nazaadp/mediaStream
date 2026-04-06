@@ -142,6 +142,14 @@ namespace media::services {
         }
 
         spdlog::info("Search '{}' returned {} raw results", query, all_results.size());
+
+        // Sort results: Primary by Year (Desc), Secondary by Rating (Desc)
+        std::sort(all_results.begin(), all_results.end(), [](const DiscoveredContent& a, const DiscoveredContent& b) {
+            if (a.year != b.year) {
+                return a.year > b.year; // More recent first
+            }
+            return a.rating > b.rating; // Higher rated first
+        });
         
         // Cap the total results before enrichment to prevent 100+ Torrentio requests
         // using our 500ms rate limiter (which would take ~50s).
