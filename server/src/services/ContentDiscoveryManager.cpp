@@ -143,6 +143,13 @@ namespace media::services {
 
         spdlog::info("Search '{}' returned {} raw results", query, all_results.size());
         
+        // Cap the total results before enrichment to prevent 100+ Torrentio requests
+        // using our 500ms rate limiter (which would take ~50s).
+        if (all_results.size() > 20) {
+            all_results.resize(20);
+            spdlog::info("Capped search results to 20 for enrichment stability.");
+        }
+        
         enrichAndDeduplicate(all_results, m_tmdb.get(), m_torrentio.get());
 
         return all_results;
