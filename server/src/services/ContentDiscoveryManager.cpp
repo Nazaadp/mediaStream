@@ -164,6 +164,12 @@ namespace media::services {
             results.insert(results.end(), tmdb.begin(), tmdb.end());
             results.insert(results.end(), cine.begin(), cine.end());
 
+            // Cap the concatenated catalog to the requested limit so we don't enrich 60+ items per row.
+            // This massively reduces the parallel requests sent to Torrentio, obeying CF limits.
+            if (results.size() > limit && limit > 0) {
+                results.resize(limit);
+            }
+
             enrichAndDeduplicate(results, m_tmdb.get(), m_torrentio.get());
         } catch (const std::exception& e) {
             spdlog::error("Failed to fetch movies: {}", e.what());
@@ -180,6 +186,10 @@ namespace media::services {
             results.insert(results.end(), tmdb.begin(), tmdb.end());
             results.insert(results.end(), cine.begin(), cine.end());
 
+            if (results.size() > limit && limit > 0) {
+                results.resize(limit);
+            }
+
             enrichAndDeduplicate(results, m_tmdb.get(), m_torrentio.get());
         } catch (const std::exception& e) {
             spdlog::error("Failed to fetch series: {}", e.what());
@@ -194,6 +204,10 @@ namespace media::services {
             auto tmdb = m_tmdb_catalog->fetchAnime(limit, page);
 
             results.insert(results.end(), tmdb.begin(), tmdb.end());
+
+            if (results.size() > limit && limit > 0) {
+                results.resize(limit);
+            }
 
             enrichAndDeduplicate(results, m_tmdb.get(), m_torrentio.get());
         } catch (const std::exception& e) {

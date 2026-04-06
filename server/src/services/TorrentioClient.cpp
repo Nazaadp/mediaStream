@@ -186,24 +186,36 @@ namespace media::services {
         }
 
         // Cloudflare error 1015 Rate Limit protection.
-        // The recent Discovery refactor spawned ~40 concurrent threads, DDOSing Torrentio.
-        // We enforce a strict 200ms sleep between outgoing requests (max 5 req/sec).
-        static std::mutex s_rate_limit_mutex;
-        static auto s_last_request_time = std::chrono::steady_clock::now();
-        {
+        // During initial load, the frontend fetches ~150 items across Movies/Series/Anime/History.
+        // We enforce a strict 500ms delay between requests (max 2 req/sec) to avoid the 75-req/minute ban.
+        auto enforceRateLimit = []() {
+            static std::mutex s_rate_limit_mutex;
+            static auto s_last_request_time = std::chrono::steady_clock::now();
             std::lock_guard<std::mutex> lock(s_rate_limit_mutex);
             auto now = std::chrono::steady_clock::now();
             auto time_since_last = std::chrono::duration_cast<std::chrono::milliseconds>(now - s_last_request_time).count();
-            if (time_since_last < 200) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(200 - time_since_last));
+            if (time_since_last < 500) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(500 - time_since_last));
             }
             s_last_request_time = std::chrono::steady_clock::now();
+        };
+
+        std::string response;
+        int max_retries = 3;
+        for (int i = 0; i < max_retries; ++i) {
+            enforceRateLimit();
+            spdlog::info("Torrentio Fetch (Attempt {}): {}", i + 1, url);
+            response = httpGetTimeout(url);
+
+            if (response.empty() || response.find("error code: 1015") != std::string::npos) {
+                spdlog::warn("Torrentio Fetch hit Cloudflare ban or empty response. Retrying locally...");
+                std::this_thread::sleep_for(std::chrono::seconds(2)); // wait 2s before retry
+                continue;
+            }
+            break; // Valid non-1015 response
         }
 
-        spdlog::info("Torrentio Fetch: {}", url);
-        std::string response = httpGetTimeout(url);
-
-        // If Cloudflare or Rate-Limiting throws an HTTP 429/500/502, the response won't be JSON.
+        // Parse result as usual
         return m_impl->parseStreams(response);
     }
 
