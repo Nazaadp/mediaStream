@@ -138,7 +138,13 @@ namespace media::services {
                 }
 
             } catch (const json::exception& e) {
-                spdlog::error("Torrentio JSON parse error: {}", e.what());
+                // Safely grab the first 100 characters of the response to see what's actually failing
+                std::string raw_preview = json_response.length() > 100 ? json_response.substr(0, 100) + "..." : json_response;
+                // Remove linebreaks from preview so it formats nicely in syslog
+                raw_preview.erase(std::remove(raw_preview.begin(), raw_preview.end(), '\n'), raw_preview.end());
+                raw_preview.erase(std::remove(raw_preview.begin(), raw_preview.end(), '\r'), raw_preview.end());
+
+                spdlog::warn("Torrentio JSON parse error: {} | Raw Response: '{}'", e.what(), raw_preview);
             }
 
             return results;
@@ -164,6 +170,11 @@ namespace media::services {
     }
 
     std::vector<DiscoveredContent> TorrentioClient::searchTorrentsByIMDB(const std::string& imdb_id, const std::string& type, int season, int episode) {
+        if (imdb_id.empty() || imdb_id.length() < 3) {
+            spdlog::warn("TorrentioClient: Skipped fetch due to missing or invalid IMDB ID.");
+            return {};
+        }
+
         std::string url;
         if (type == "tv" && season > 0 && episode > 0) {
             url = m_impl->BASE_URL + "/stream/series/" + imdb_id + ":" + std::to_string(season) + ":" + std::to_string(episode) + ".json";
@@ -173,6 +184,8 @@ namespace media::services {
 
         spdlog::info("Torrentio Fetch: {}", url);
         std::string response = httpGetTimeout(url);
+
+        // If Cloudflare or Rate-Limiting throws an HTTP 429/500/502, the response won't be JSON.
         return m_impl->parseStreams(response);
     }
 
