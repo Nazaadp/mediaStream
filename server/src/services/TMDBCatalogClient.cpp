@@ -111,6 +111,7 @@ namespace media::services {
                     if (result.contains("vote_average") && result["vote_average"].is_number()) {
                         content.rating = result.value("vote_average", 0.0f);
                     }
+                    content.original_language = result.value("original_language", "");
 
                     content.source = source_tag;
                     items.push_back(content);

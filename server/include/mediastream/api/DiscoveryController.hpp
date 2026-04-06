@@ -31,6 +31,7 @@ private:
             root["runtime_minutes"] = m.runtime_minutes;
             root["imdb_id"] = m.imdb_id;
             root["language"] = m.language;
+            root["original_language"] = m.original_language;
             root["source"] = m.source;
             root["torrents"] = nlohmann::json::array();
             for (const auto& t : m.torrents) {
@@ -116,6 +117,27 @@ public:
             return response;
         } catch (const std::exception& e) {
             spdlog::error("Discovery Error: {}", e.what());
+            return createResponse(Status::CODE_500, "Internal Server Error");
+        }
+    }
+    ENDPOINT_INFO(searchContent) {
+        info->summary = "Search global catalog";
+    }
+    ENDPOINT("GET", "/api/v1/discover/search", searchContent, REQUEST(std::shared_ptr<IncomingRequest>, request)) {
+        try {
+            auto q = request->getQueryParameter("query");
+            std::string query = q ? q->c_str() : "";
+
+            if (query.empty()) {
+                return createResponse(Status::CODE_400, "Missing query string");
+            }
+
+            auto results = m_discovery->searchAll(query, 15);
+            auto response = createResponse(Status::CODE_200, serializeToJson(results));
+            response->putHeader("Content-Type", "application/json");
+            return response;
+        } catch (const std::exception& e) {
+            spdlog::error("Discovery Search Error: {}", e.what());
             return createResponse(Status::CODE_500, "Internal Server Error");
         }
     }

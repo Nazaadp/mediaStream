@@ -128,27 +128,20 @@ namespace media::services {
         std::vector<DiscoveredContent> all_results;
 
         try {
-            auto movies = m_yts->search(query, limit_per_source);
-            all_results.insert(all_results.end(), movies.begin(), movies.end());
+            auto tmdb = m_tmdb_catalog->search(query, limit_per_source, 1);
+            all_results.insert(all_results.end(), tmdb.begin(), tmdb.end());
         } catch (const std::exception& e) {
-            spdlog::error("YTS search failed: {}", e.what());
+            spdlog::error("TMDB search failed: {}", e.what());
         }
 
         try {
-            auto series = m_eztv->search(query, limit_per_source);
-            all_results.insert(all_results.end(), series.begin(), series.end());
+            auto cine = m_cinemeta->search(query, limit_per_source, 1);
+            all_results.insert(all_results.end(), cine.begin(), cine.end());
         } catch (const std::exception& e) {
-            spdlog::error("EZTV search failed: {}", e.what());
+            spdlog::error("Cinemeta search failed: {}", e.what());
         }
 
-        try {
-            auto anime = m_nyaa->search(query, limit_per_source);
-            all_results.insert(all_results.end(), anime.begin(), anime.end());
-        } catch (const std::exception& e) {
-            spdlog::error("Nyaa search failed: {}", e.what());
-        }
-
-        spdlog::info("Search '{}' returned {} results", query, all_results.size());
+        spdlog::info("Search '{}' returned {} raw results", query, all_results.size());
         
         enrichAndDeduplicate(all_results, m_tmdb.get(), m_torrentio.get());
 
