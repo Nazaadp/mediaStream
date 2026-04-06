@@ -158,11 +158,9 @@ namespace media::services {
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchMovies(int limit, int page) {
         std::vector<DiscoveredContent> results;
         try {
-            auto cine = m_cinemeta->fetchPopular(limit, page);
             auto tmdb = m_tmdb_catalog->fetchPopular(limit, page);
-            
+
             results.insert(results.end(), tmdb.begin(), tmdb.end());
-            results.insert(results.end(), cine.begin(), cine.end());
 
             // Cap the concatenated catalog to the requested limit so we don't enrich 60+ items per row.
             // This massively reduces the parallel requests sent to Torrentio, obeying CF limits.
@@ -180,11 +178,9 @@ namespace media::services {
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchSeries(int limit, int page) {
         std::vector<DiscoveredContent> results;
         try {
-            auto cine = m_cinemeta->fetchSeries(limit, page);
             auto tmdb = m_tmdb_catalog->fetchSeries(limit, page);
 
             results.insert(results.end(), tmdb.begin(), tmdb.end());
-            results.insert(results.end(), cine.begin(), cine.end());
 
             if (limit > 0 && results.size() > static_cast<size_t>(limit)) {
                 results.resize(limit);
