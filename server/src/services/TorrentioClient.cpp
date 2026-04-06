@@ -4,6 +4,9 @@
 #include <spdlog/spdlog.h>
 #include <regex>
 #include <sstream>
+#include <mutex>
+#include <chrono>
+#include <thread>
 
 using json = nlohmann::json;
 
@@ -180,6 +183,21 @@ namespace media::services {
             url = m_impl->BASE_URL + "/stream/series/" + imdb_id + ":" + std::to_string(season) + ":" + std::to_string(episode) + ".json";
         } else {
             url = m_impl->BASE_URL + "/stream/movie/" + imdb_id + ".json";
+        }
+
+        // Cloudflare error 1015 Rate Limit protection.
+        // The recent Discovery refactor spawned ~40 concurrent threads, DDOSing Torrentio.
+        // We enforce a strict 200ms sleep between outgoing requests (max 5 req/sec).
+        static std::mutex s_rate_limit_mutex;
+        static auto s_last_request_time = std::chrono::steady_clock::now();
+        {
+            std::lock_guard<std::mutex> lock(s_rate_limit_mutex);
+            auto now = std::chrono::steady_clock::now();
+            auto time_since_last = std::chrono::duration_cast<std::chrono::milliseconds>(now - s_last_request_time).count();
+            if (time_since_last < 200) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(200 - time_since_last));
+            }
+            s_last_request_time = std::chrono::steady_clock::now();
         }
 
         spdlog::info("Torrentio Fetch: {}", url);
