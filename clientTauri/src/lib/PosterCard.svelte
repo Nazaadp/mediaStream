@@ -12,10 +12,10 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="poster-card" on:click={handleClick}>
     <div class="image-wrapper">
-        <img src={item.poster_url || 'https://via.placeholder.com/300x450?text=No+Poster'} alt={item.original_title || item.title} loading="lazy" />
+        <img src={item.poster_url || 'https://via.placeholder.com/300x450?text=No+Poster'} alt={item.title || item.original_title} loading="lazy" />
     </div>
     <div class="title-wrapper">
-        <span class="title" title={item.original_title || item.title}>{item.original_title || item.title}</span>
+        <span class="title" title={item.title || item.original_title}>{item.title || item.original_title}</span>
     </div>
 </div>
 
