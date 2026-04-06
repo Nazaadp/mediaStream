@@ -75,7 +75,7 @@ namespace media::services {
                     content.source = source_tag;
                     results.push_back(content);
                 }
-            } catch (const auto& e) {
+            } catch (const std::exception& e) {
                 spdlog::error("Cinemeta JSON parsing error: {}", e.what());
             }
 

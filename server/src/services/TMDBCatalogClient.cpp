@@ -113,7 +113,7 @@ namespace media::services {
                     content.source = source_tag;
                     items.push_back(content);
                 }
-            } catch (const auto& e) {
+            } catch (const std::exception& e) {
                 spdlog::error("TMDB json map error: {}", e.what());
             }
 

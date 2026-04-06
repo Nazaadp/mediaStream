@@ -30,6 +30,7 @@ namespace media::services {
         std::string genres;
         int runtime_minutes;
         std::string imdb_id;
+        std::string tmdb_id;
         std::string language;
         std::vector<TorrentQuality> torrents;
         std::string source;  // "YTS", "EZTV", "Nyaa"
