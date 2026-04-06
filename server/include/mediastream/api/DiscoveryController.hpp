@@ -70,7 +70,7 @@ public:
         try {
             int page = 1;
             auto p = request->getQueryParameter("page");
-            if (p) page = std::stoi(p->std_str());
+            if (p) page = std::stoi(p->c_str());
 
             auto movies = m_discovery->fetchMovies(15, page);
             auto response = createResponse(Status::CODE_200, serializeToJson(movies));
@@ -89,7 +89,7 @@ public:
         try {
             int page = 1;
             auto p = request->getQueryParameter("page");
-            if (p) page = std::stoi(p->std_str());
+            if (p) page = std::stoi(p->c_str());
 
             auto series = m_discovery->fetchSeries(15, page);
             auto response = createResponse(Status::CODE_200, serializeToJson(series));
@@ -108,7 +108,7 @@ public:
         try {
             int page = 1;
             auto p = request->getQueryParameter("page");
-            if (p) page = std::stoi(p->std_str());
+            if (p) page = std::stoi(p->c_str());
 
             auto anime = m_discovery->fetchAnime(15, page);
             auto response = createResponse(Status::CODE_200, serializeToJson(anime));
