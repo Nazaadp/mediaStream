@@ -113,6 +113,41 @@ namespace media::services {
         std::unique_ptr<Impl> m_impl;
     };
 
+    // Stremio Cinemeta Catalog Client
+    class CinemetaClient : public IContentDiscovery {
+    public:
+        CinemetaClient();
+        ~CinemetaClient() override;
+
+        std::vector<DiscoveredContent> fetchPopular(int limit = 20) override;
+        std::vector<DiscoveredContent> search(const std::string& query, int limit = 20) override;
+        std::optional<DiscoveredContent> getById(const std::string& id) override;
+
+        std::vector<DiscoveredContent> fetchSeries(int limit = 20);
+
+    private:
+        class Impl;
+        std::unique_ptr<Impl> m_impl;
+    };
+
+    // TMDB Catalog Client
+    class TMDBCatalogClient : public IContentDiscovery {
+    public:
+        TMDBCatalogClient();
+        ~TMDBCatalogClient() override;
+
+        std::vector<DiscoveredContent> fetchPopular(int limit = 20) override;
+        std::vector<DiscoveredContent> search(const std::string& query, int limit = 20) override;
+        std::optional<DiscoveredContent> getById(const std::string& id) override;
+
+        std::vector<DiscoveredContent> fetchSeries(int limit = 20);
+        std::vector<DiscoveredContent> fetchAnime(int limit = 20);
+
+    private:
+        class Impl;
+        std::unique_ptr<Impl> m_impl;
+    };
+
     class TMDBFetcher;
 
     // Unified Content Discovery Manager
@@ -138,6 +173,8 @@ namespace media::services {
         std::unique_ptr<NyaaClient> m_nyaa;
         std::unique_ptr<TorrentioClient> m_torrentio;
         std::unique_ptr<TMDBFetcher> m_tmdb;
+        std::unique_ptr<CinemetaClient> m_cinemeta;
+        std::unique_ptr<TMDBCatalogClient> m_tmdb_catalog;
     };
 
 } // namespace media::services

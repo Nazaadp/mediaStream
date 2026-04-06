@@ -35,6 +35,8 @@ add_library(MediaCore
     src/services/TorrentioClient.cpp
     src/services/ContentDiscoveryManager.cpp
     src/services/TMDBFetcher.cpp
+    src/services/CinemetaClient.cpp
+    src/services/TMDBCatalogClient.cpp
     # Add future source files here
 )
 

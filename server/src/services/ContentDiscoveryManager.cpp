@@ -11,7 +11,9 @@ namespace media::services {
         , m_eztv(std::make_unique<EZTVClient>())
         , m_nyaa(std::make_unique<NyaaClient>())
         , m_torrentio(std::make_unique<TorrentioClient>())
-        , m_tmdb(std::make_unique<TMDBFetcher>()) {
+        , m_tmdb(std::make_unique<TMDBFetcher>())
+        , m_cinemeta(std::make_unique<CinemetaClient>())
+        , m_tmdb_catalog(std::make_unique<TMDBCatalogClient>()) {
         spdlog::info("Content Discovery Manager initialized");
     }
 
@@ -145,36 +147,50 @@ namespace media::services {
     }
 
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchMovies(int limit) {
+        std::vector<DiscoveredContent> results;
         try {
-            auto results = m_yts->fetchPopular(limit);
+            auto cine = m_cinemeta->fetchPopular(limit);
+            auto tmdb = m_tmdb_catalog->fetchPopular(limit);
+            
+            results.insert(results.end(), tmdb.begin(), tmdb.end());
+            results.insert(results.end(), cine.begin(), cine.end());
+
             enrichAndDeduplicate(results, m_tmdb.get(), m_torrentio.get());
-            return results;
         } catch (const std::exception& e) {
             spdlog::error("Failed to fetch movies: {}", e.what());
-            return {};
         }
+        return results;
     }
 
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchSeries(int limit) {
+        std::vector<DiscoveredContent> results;
         try {
-            auto results = m_eztv->fetchPopular(limit);
+            auto cine = m_cinemeta->fetchSeries(limit);
+            auto tmdb = m_tmdb_catalog->fetchSeries(limit);
+
+            results.insert(results.end(), tmdb.begin(), tmdb.end());
+            results.insert(results.end(), cine.begin(), cine.end());
+
             enrichAndDeduplicate(results, m_tmdb.get(), m_torrentio.get());
-            return results;
         } catch (const std::exception& e) {
             spdlog::error("Failed to fetch series: {}", e.what());
-            return {};
         }
+        return results;
     }
 
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchAnime(int limit) {
+        std::vector<DiscoveredContent> results;
         try {
-            auto results = m_nyaa->fetchPopular(limit);
+            // Cinemeta doesn't have an Anime-specific root catalog by default, so we fall back to TMDB natively
+            auto tmdb = m_tmdb_catalog->fetchAnime(limit);
+
+            results.insert(results.end(), tmdb.begin(), tmdb.end());
+
             enrichAndDeduplicate(results, m_tmdb.get(), m_torrentio.get());
-            return results;
         } catch (const std::exception& e) {
             spdlog::error("Failed to fetch anime: {}", e.what());
-            return {};
         }
+        return results;
     }
 
 } // namespace media::services
