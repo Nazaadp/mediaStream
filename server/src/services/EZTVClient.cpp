@@ -120,7 +120,7 @@ namespace media::services {
     EZTVClient::~EZTVClient() = default;
 
     // Fetch Popular Series
-    std::vector<DiscoveredContent> EZTVClient::fetchPopular(int limit, int page) {
+    std::vector<DiscoveredContent> EZTVClient::fetchPopular(int limit, int /*page*/) {
         std::string url = m_impl->BASE_URL + "/get-torrents?limit=" + std::to_string(limit);
         
         spdlog::info("Fetching popular series from EZTV...");
@@ -142,7 +142,7 @@ namespace media::services {
     }
 
     // Search Series
-    std::vector<DiscoveredContent> EZTVClient::search(const std::string& query, int limit, int page) {
+    std::vector<DiscoveredContent> EZTVClient::search(const std::string& query, int limit, int /*page*/) {
         // EZTV search is limited, we'll filter results
         spdlog::info("Searching EZTV for: {}", query);
         
