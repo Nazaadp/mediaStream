@@ -111,10 +111,10 @@ namespace media::services {
                 }
 
                 if (!content.imdb_id.empty()) {
-                    url = BASE_URL + "/find/" + content.imdb_id + "?external_source=imdb_id";
+                    url = BASE_URL + "/find/" + content.imdb_id + "?external_source=imdb_id&language=en-US";
                 } else if (!content.title.empty()) {
                     std::string encoded_title = urlEncode(content.title);
-                    url = BASE_URL + "/search/" + determined_type + "?query=" + encoded_title;
+                    url = BASE_URL + "/search/" + determined_type + "?query=" + encoded_title + "&language=en-US";
                 } else {
                     return;
                 }
@@ -134,6 +134,12 @@ namespace media::services {
                 }
 
                 if (!result.is_null()) {
+                    if (result.contains("title") && result["title"].is_string() && !result["title"].get<std::string>().empty()) {
+                        content.title = result["title"].get<std::string>();
+                    } else if (result.contains("name") && result["name"].is_string() && !result["name"].get<std::string>().empty()) {
+                        content.title = result["name"].get<std::string>();
+                    }
+
                     if (result.contains("overview") && result["overview"].is_string() && !result["overview"].get<std::string>().empty()) {
                         content.description = result["overview"].get<std::string>();
                     }
