@@ -166,7 +166,7 @@ namespace media::services {
 
             // Cap the concatenated catalog to the requested limit so we don't enrich 60+ items per row.
             // This massively reduces the parallel requests sent to Torrentio, obeying CF limits.
-            if (results.size() > limit && limit > 0) {
+            if (limit > 0 && results.size() > static_cast<size_t>(limit)) {
                 results.resize(limit);
             }
 
@@ -186,7 +186,7 @@ namespace media::services {
             results.insert(results.end(), tmdb.begin(), tmdb.end());
             results.insert(results.end(), cine.begin(), cine.end());
 
-            if (results.size() > limit && limit > 0) {
+            if (limit > 0 && results.size() > static_cast<size_t>(limit)) {
                 results.resize(limit);
             }
 
@@ -205,7 +205,7 @@ namespace media::services {
 
             results.insert(results.end(), tmdb.begin(), tmdb.end());
 
-            if (results.size() > limit && limit > 0) {
+            if (limit > 0 && results.size() > static_cast<size_t>(limit)) {
                 results.resize(limit);
             }
 
