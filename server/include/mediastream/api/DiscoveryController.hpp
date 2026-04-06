@@ -30,6 +30,8 @@ private:
             root["genres"] = m.genres;
             root["runtime_minutes"] = m.runtime_minutes;
             root["imdb_id"] = m.imdb_id;
+            root["tmdb_id"] = m.tmdb_id;
+            root["type"] = m.type;
             root["language"] = m.language;
             root["original_language"] = m.original_language;
             root["source"] = m.source;
