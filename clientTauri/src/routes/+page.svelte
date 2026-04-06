@@ -22,6 +22,14 @@
     let selectedMedia = null;
     let isRefreshing = false;
 
+    // Search states
+    let searchQuery = "";
+    let isSearching = false;
+    let isSearchMode = false;
+    let searchMovies = [];
+    let searchSeries = [];
+    let searchAnime = [];
+
     // Svelte Action for Intersection Observer (Infinite Scroll)
     function infiniteScroll(node, callback) {
         const observer = new IntersectionObserver((entries) => {
@@ -241,18 +249,83 @@
             alert("Failed to connect to the backend securely.");
         }
     }
+
+    async function performSearch() {
+        if (!searchQuery.trim()) {
+            isSearchMode = false;
+            return;
+        }
+
+        isSearching = true;
+        isSearchMode = true;
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/discover/search?query=${encodeURIComponent(searchQuery)}`);
+            if (res.ok) {
+                const results = await res.json();
+                
+                // Categorize results
+                searchMovies = results.filter(item => item.type === 'movie');
+                
+                // For TV shows, we split into Series and Anime based on original_language
+                const allTV = results.filter(item => item.type === 'tv');
+                searchAnime = allTV.filter(item => item.original_language === 'ja' || item.original_language === 'zh' || item.original_language === 'ko');
+                searchSeries = allTV.filter(item => !(item.original_language === 'ja' || item.original_language === 'zh' || item.original_language === 'ko'));
+            }
+        } catch (e) {
+            console.error("Search failed:", e);
+        } finally {
+            isSearching = false;
+        }
+    }
+
+    function toggleSearch() {
+        if (isSearchMode) {
+            isSearchMode = false;
+            searchQuery = "";
+        } else {
+            isSearchMode = true;
+            // Focus search input after a small timeout to allow rendering
+            setTimeout(() => {
+                const input = document.querySelector('.search-input');
+                if (input) input.focus();
+            }, 100);
+        }
+    }
+
+    function handleSearchKeydown(event) {
+        if (event.key === 'Enter') {
+            performSearch();
+        } else if (event.key === 'Escape') {
+            isSearchMode = false;
+            searchQuery = "";
+        }
+    }
 </script>
 
 <!-- HEADER -->
 <header class="navbar">
     <div class="logo">MediaStream</div>
     <ul class="nav-links">
-        <li class="active">Home</li>
+        <li class="active" on:click={() => { isSearchMode = false; searchQuery = ""; }}>Home</li>
         <li>Movies</li>
         <li>Series</li>
         <li>Anime</li>
     </ul>
     <div class="nav-actions">
+        {#if isSearchMode}
+            <div class="search-bar-container">
+                <input 
+                    type="text" 
+                    class="search-input" 
+                    placeholder="Search movies, series, or anime..." 
+                    bind:value={searchQuery}
+                    on:keydown={handleSearchKeydown}
+                />
+                {#if isSearching}
+                    <div class="searching-spinner"></div>
+                {/if}
+            </div>
+        {/if}
         <!-- SVG Refresh Icon -->
         <button
             class="icon-btn"
@@ -279,14 +352,14 @@
             >
         </button>
         <!-- SVG Search Icon -->
-        <button class="icon-btn" aria-label="Search">
+        <button class="icon-btn" aria-label="Search" on:click={toggleSearch}>
             <svg
                 xmlns="http://www.w3.org/2005/svg"
                 width="24"
                 height="24"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="currentColor"
+                stroke={isSearchMode ? "var(--accent-color)" : "currentColor"}
                 stroke-width="2"
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -320,11 +393,12 @@
 
 <!-- MAIN CONTENT -->
 <main class="gallery-container">
-    <!-- Watch History -->
-    <section class="gallery-row">
-        <h2>Watch History</h2>
-        {#if history.length > 7}
-            <button class="scroll-btn left" on:click={(e) => scrollRow(e, -1)}
+    {#if !isSearchMode}
+        <!-- Watch History -->
+        <section class="gallery-row">
+            <h2>Watch History</h2>
+            {#if history.length > 7}
+                <button class="scroll-btn left" on:click={(e) => scrollRow(e, -1)}
                 >&#10094;</button
             >
         {/if}
@@ -454,16 +528,58 @@
             >
         {/if}
     </section>
-</main>
+    {:else}
+        <!-- SEARCH RESULTS -->
+        <div class="search-results-info">
+            <h2>Search Results for "{searchQuery}"</h2>
+            {#if !isSearching && searchMovies.length === 0 && searchSeries.length === 0 && searchAnime.length === 0}
+                <div class="empty-state">No results found for your search.</div>
+            {/if}
+        </div>
 
-{#if selectedMedia}
-    <MediaCard
-        item={selectedMedia}
-        on:close={closeMediaCard}
-        on:play={handlePlay}
-        on:download={handleDownload}
-    />
-{/if}
+        {#if searchMovies.length > 0}
+            <section class="gallery-row">
+                <h2>Movies</h2>
+                <div class="row-scroll">
+                    {#each searchMovies as item}
+                        <PosterCard {item} on:select={openMediaCard} />
+                    {/each}
+                </div>
+            </section>
+        {/if}
+
+        {#if searchSeries.length > 0}
+            <section class="gallery-row">
+                <h2>Series</h2>
+                <div class="row-scroll">
+                    {#each searchSeries as item}
+                        <PosterCard {item} on:select={openMediaCard} />
+                    {/each}
+                </div>
+            </section>
+        {/if}
+
+        {#if searchAnime.length > 0}
+            <section class="gallery-row">
+                <h2>Anime</h2>
+                <div class="row-scroll">
+                    {#each searchAnime as item}
+                        <PosterCard {item} on:select={openMediaCard} />
+                    {/each}
+                </div>
+            </section>
+        {/if}
+    {/if}
+
+    {#if selectedMedia}
+        <MediaCard
+            item={selectedMedia}
+            on:close={closeMediaCard}
+            on:play={handlePlay}
+            on:download={handleDownload}
+        />
+    {/if}
+</main>
 
 <style>
     .navbar {
@@ -532,6 +648,62 @@
 
     .icon-btn.spinning svg {
         animation: spin 1s linear infinite;
+    }
+
+    .search-bar-container {
+        display: flex;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: var(--border-radius-md);
+        padding: 0 var(--spacing-sm);
+        margin-right: var(--spacing-md);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        transition: all var(--transition-normal);
+        max-width: 400px;
+        flex-grow: 1;
+    }
+
+    .search-bar-container:focus-within {
+        background: rgba(255, 255, 255, 0.15);
+        border-color: var(--accent-color);
+        box-shadow: 0 0 10px rgba(229, 9, 20, 0.3);
+    }
+
+    .search-input {
+        background: transparent;
+        border: none;
+        color: white;
+        padding: var(--spacing-sm) var(--spacing-md);
+        font-size: 0.9rem;
+        outline: none;
+        width: 100%;
+    }
+
+    .searching-spinner {
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        border-top-color: var(--accent-color);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-right: var(--spacing-sm);
+    }
+
+    .search-results-info {
+        padding: var(--spacing-md) var(--spacing-lg);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        margin-bottom: var(--spacing-lg);
+    }
+
+    .search-results-info h2 {
+        font-size: 1.6rem;
+        color: var(--text-main);
+        font-weight: 300;
+    }
+
+    .search-results-info h2 span {
+        color: var(--accent-color);
+        font-weight: 600;
     }
 
     .gallery-container {
