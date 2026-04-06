@@ -16,7 +16,7 @@ namespace media::services {
         , m_tmdb_catalog(std::make_unique<TMDBCatalogClient>()) {
         spdlog::info("Content Discovery Manager initialized");
     }
-
+    namespace {
         void enrichAndDeduplicate(std::vector<DiscoveredContent>& list, TMDBFetcher* tmdb, TorrentioClient* tio) {
             std::vector<std::future<void>> futures;
             spdlog::info("Asynchronously enriching {} items...", list.size());
