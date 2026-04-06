@@ -10,9 +10,62 @@
     let series = [];
     let anime = [];
 
-    let selectedMedia = null;
+    // Pagination states
+    let moviePage = 1;
+    let seriesPage = 1;
+    let animePage = 1;
 
+    let isLoadingMovies = false;
+    let isLoadingSeries = false;
+    let isLoadingAnime = false;
+
+    let selectedMedia = null;
     let isRefreshing = false;
+
+    // Svelte Action for Intersection Observer (Infinite Scroll)
+    function infiniteScroll(node, callback) {
+        const observer = new IntersectionObserver((entries) => {
+            if(entries[0].isIntersecting) {
+                callback();
+            }
+        }, { root: node.parentElement, rootMargin: "0px 300px 0px 0px" }); // trigger 300px before end
+
+        observer.observe(node);
+        return { destroy() { observer.disconnect(); } };
+    }
+
+    async function loadMoreMovies() {
+        if (isLoadingMovies) return;
+        isLoadingMovies = true;
+        moviePage++;
+        try {
+            const r = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/discover/movies?page=${moviePage}`);
+            if (r.ok) movies = [...movies, ...await r.json()];
+        } catch(e) { console.error(e); }
+        isLoadingMovies = false;
+    }
+
+    async function loadMoreSeries() {
+        if (isLoadingSeries) return;
+        isLoadingSeries = true;
+        seriesPage++;
+        try {
+            const r = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/discover/series?page=${seriesPage}`);
+            if (r.ok) series = [...series, ...await r.json()];
+        } catch(e) { console.error(e); }
+        isLoadingSeries = false;
+    }
+
+    async function loadMoreAnime() {
+        if (isLoadingAnime) return;
+        isLoadingAnime = true;
+        animePage++;
+        try {
+            const r = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/discover/anime?page=${animePage}`);
+            if (r.ok) anime = [...anime, ...await r.json()];
+        } catch(e) { console.error(e); }
+        isLoadingAnime = false;
+    }
 
     async function refreshData() {
         if (isRefreshing) return;
@@ -35,13 +88,13 @@
                         `${import.meta.env.VITE_API_URL}/api/v1/user/viewlater`,
                     ),
                     fetch(
-                        `${import.meta.env.VITE_API_URL}/api/v1/discover/movies`,
+                        `${import.meta.env.VITE_API_URL}/api/v1/discover/movies?page=1`,
                     ),
                     fetch(
-                        `${import.meta.env.VITE_API_URL}/api/v1/discover/series`,
+                        `${import.meta.env.VITE_API_URL}/api/v1/discover/series?page=1`,
                     ),
                     fetch(
-                        `${import.meta.env.VITE_API_URL}/api/v1/discover/anime`,
+                        `${import.meta.env.VITE_API_URL}/api/v1/discover/anime?page=1`,
                     ),
                 ]);
 
@@ -330,6 +383,11 @@
                 {#each movies as item}
                     <PosterCard {item} on:select={openMediaCard} />
                 {/each}
+                <div use:infiniteScroll={loadMoreMovies} class="infinite-trigger">
+                    {#if isLoadingMovies}
+                        <div class="spinner small-spinner"></div>
+                    {/if}
+                </div>
             {/if}
         </div>
         {#if movies.length > 7}
@@ -354,6 +412,11 @@
                 {#each series as item}
                     <PosterCard {item} on:select={openMediaCard} />
                 {/each}
+                <div use:infiniteScroll={loadMoreSeries} class="infinite-trigger">
+                    {#if isLoadingSeries}
+                        <div class="spinner small-spinner"></div>
+                    {/if}
+                </div>
             {/if}
         </div>
         {#if series.length > 7}
@@ -378,6 +441,11 @@
                 {#each anime as item}
                     <PosterCard {item} on:select={openMediaCard} />
                 {/each}
+                <div use:infiniteScroll={loadMoreAnime} class="infinite-trigger">
+                    {#if isLoadingAnime}
+                        <div class="spinner small-spinner"></div>
+                    {/if}
+                </div>
             {/if}
         </div>
         {#if anime.length > 7}
@@ -557,11 +625,23 @@
     }
 
     @keyframes spin {
-        0% {
-            transform: rotate(0deg);
-        }
-        100% {
-            transform: rotate(360deg);
-        }
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .infinite-trigger {
+        width: 80px;
+        min-width: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+    }
+
+    .small-spinner {
+        width: 25px;
+        height: 25px;
+        border-width: 3px;
+        margin: 0;
     }
 </style>

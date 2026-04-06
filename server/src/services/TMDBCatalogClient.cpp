@@ -91,12 +91,14 @@ namespace media::services {
                         if (result.contains("release_date") && !result["release_date"].get<std::string>().empty()) {
                             content.year = std::stoi(result["release_date"].get<std::string>().substr(0, 4));
                         }
+                        content.type = "movie";
                     } else if (result.contains("name")) { // TV
                         content.title = result.value("name", "");
                         content.original_title = result.value("original_name", content.title);
                         if (result.contains("first_air_date") && !result["first_air_date"].get<std::string>().empty()) {
                             content.year = std::stoi(result["first_air_date"].get<std::string>().substr(0, 4));
                         }
+                        content.type = "tv";
                     }
 
                     if (result.contains("overview")) content.description = result.value("overview", "");
@@ -130,28 +132,28 @@ namespace media::services {
         curl_global_cleanup();
     }
 
-    std::vector<DiscoveredContent> TMDBCatalogClient::fetchPopular(int) {
+    std::vector<DiscoveredContent> TMDBCatalogClient::fetchPopular(int limit, int page) {
         if (m_impl->m_api_key.empty()) return {};
-        spdlog::info("Fetching popular movies from TMDB...");
-        std::string url = m_impl->BASE_URL + "/movie/popular?language=en-US&page=1";
+        spdlog::info("Fetching popular movies from TMDB (page {})...", page);
+        std::string url = m_impl->BASE_URL + "/movie/popular?language=en-US&page=" + std::to_string(page);
         return m_impl->parseResults(tmdbCatHttpGet(url, m_impl->m_api_key), "TMDB");
     }
 
-    std::vector<DiscoveredContent> TMDBCatalogClient::fetchSeries(int) {
+    std::vector<DiscoveredContent> TMDBCatalogClient::fetchSeries(int limit, int page) {
         if (m_impl->m_api_key.empty()) return {};
-        spdlog::info("Fetching popular series from TMDB...");
-        std::string url = m_impl->BASE_URL + "/tv/popular?language=en-US&page=1";
+        spdlog::info("Fetching popular series from TMDB (page {})...", page);
+        std::string url = m_impl->BASE_URL + "/tv/popular?language=en-US&page=" + std::to_string(page);
         return m_impl->parseResults(tmdbCatHttpGet(url, m_impl->m_api_key), "TMDB");
     }
 
-    std::vector<DiscoveredContent> TMDBCatalogClient::fetchAnime(int) {
+    std::vector<DiscoveredContent> TMDBCatalogClient::fetchAnime(int limit, int page) {
         if (m_impl->m_api_key.empty()) return {};
-        spdlog::info("Fetching anime from TMDB...");
-        std::string url = m_impl->BASE_URL + "/discover/tv?with_genres=16&with_original_language=ja&sort_by=popularity.desc";
+        spdlog::info("Fetching anime from TMDB (page {})...", page);
+        std::string url = m_impl->BASE_URL + "/discover/tv?with_genres=16&with_original_language=ja&sort_by=popularity.desc&page=" + std::to_string(page);
         return m_impl->parseResults(tmdbCatHttpGet(url, m_impl->m_api_key), "TMDB");
     }
 
-    std::vector<DiscoveredContent> TMDBCatalogClient::search(const std::string& query, int) {
+    std::vector<DiscoveredContent> TMDBCatalogClient::search(const std::string& query, int limit, int page) {
         if (m_impl->m_api_key.empty()) return {};
         CURL* curl = curl_easy_init();
         std::string url_query = query;
@@ -160,7 +162,7 @@ namespace media::services {
             if (output) { url_query = output; curl_free(output); }
             curl_easy_cleanup(curl);
         }
-        std::string url = m_impl->BASE_URL + "/search/multi?query=" + url_query + "&language=en-US&page=1";
+        std::string url = m_impl->BASE_URL + "/search/multi?query=" + url_query + "&language=en-US&page=" + std::to_string(page);
         return m_impl->parseResults(tmdbCatHttpGet(url, m_impl->m_api_key), "TMDB");
     }
 

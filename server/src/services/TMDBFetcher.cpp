@@ -96,12 +96,25 @@ namespace media::services {
             
             try {
                 std::string url;
+                std::string determined_type = content.type.empty() ? ((content.source == "EZTV" || content.source == "Nyaa") ? "tv" : "movie") : content.type;
+
+                // Fix entirely missing IMDB IDs by doing an external ID reverse lookup natively FIRST!
+                if (content.imdb_id.empty() && !content.tmdb_id.empty()) {
+                    std::string ext_url = BASE_URL + "/" + determined_type + "/" + content.tmdb_id + "/external_ids";
+                    std::string ext_res = tmdbHttpGet(ext_url, m_api_key);
+                    try {
+                        auto ext_j = json::parse(ext_res);
+                        if (ext_j.contains("imdb_id") && ext_j["imdb_id"].is_string()) {
+                            content.imdb_id = ext_j["imdb_id"].get<std::string>();
+                        }
+                    } catch(...) {}
+                }
+
                 if (!content.imdb_id.empty()) {
                     url = BASE_URL + "/find/" + content.imdb_id + "?external_source=imdb_id";
                 } else if (!content.title.empty()) {
                     std::string encoded_title = urlEncode(content.title);
-                    std::string type = (content.source == "EZTV" || content.source == "Nyaa") ? "tv" : "movie";
-                    url = BASE_URL + "/search/" + type + "?query=" + encoded_title;
+                    url = BASE_URL + "/search/" + determined_type + "?query=" + encoded_title;
                 } else {
                     return;
                 }

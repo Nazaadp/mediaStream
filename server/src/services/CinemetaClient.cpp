@@ -69,7 +69,12 @@ namespace media::services {
                     if (meta.contains("imdbRating")) {
                         try {
                             content.rating = std::stof(meta["imdbRating"].get<std::string>());
-                        } catch (...) { content.rating = 0.0f; }
+                    }
+                    
+                    if (meta.contains("type") && meta["type"].is_string()) {
+                        content.type = meta["type"].get<std::string>() == "series" ? "tv" : "movie";
+                    } else {
+                        content.type = "movie";
                     }
 
                     content.source = source_tag;
@@ -92,25 +97,27 @@ namespace media::services {
         curl_global_cleanup();
     }
 
-    std::vector<DiscoveredContent> CinemetaClient::fetchPopular(int) {
-        spdlog::info("Fetching popular movies from Cinemeta...");
-        // Fetch top movies
-        std::string url = m_impl->BASE_URL + "/movie/top.json";
+    std::vector<DiscoveredContent> CinemetaClient::fetchPopular(int limit, int page) {
+        spdlog::info("Fetching popular movies from Cinemeta (page {})...", page);
+        int skip = (page - 1) * limit; // Map page directly to limit chunk size
+        std::string url = m_impl->BASE_URL + "/movie/top";
+        if (skip > 0) url += "/skip=" + std::to_string(skip);
+        url += ".json";
         std::string response = cmHttpGet(url);
         return m_impl->parseMetas(response, "Cinemeta");
     }
 
-    std::vector<DiscoveredContent> CinemetaClient::fetchSeries(int) {
-        spdlog::info("Fetching popular series from Cinemeta...");
-        std::string url = m_impl->BASE_URL + "/series/top.json";
+    std::vector<DiscoveredContent> CinemetaClient::fetchSeries(int limit, int page) {
+        spdlog::info("Fetching popular series from Cinemeta (page {})...", page);
+        int skip = (page - 1) * limit;
+        std::string url = m_impl->BASE_URL + "/series/top";
+        if (skip > 0) url += "/skip=" + std::to_string(skip);
+        url += ".json";
         std::string response = cmHttpGet(url);
         return m_impl->parseMetas(response, "Cinemeta");
     }
 
-    std::vector<DiscoveredContent> CinemetaClient::search(const std::string& query, int) {
-        // Cinemeta search endpoint is typically /catalog/movie/search={query}.json 
-        // We will just do a basic implementation or return empty for this specific sprint phase since the user said 
-        // focus on "retrieve popular movies/series/animes". We will implement movie search here to be thorough.
+    std::vector<DiscoveredContent> CinemetaClient::search(const std::string& query, int limit, int page) {
         CURL* curl = curl_easy_init();
         std::string url_query = query;
         if (curl) {
@@ -122,7 +129,11 @@ namespace media::services {
             curl_easy_cleanup(curl);
         }
 
-        std::string url = m_impl->BASE_URL + "/movie/search=" + url_query + ".json";
+        int skip = (page - 1) * limit;
+        std::string url = m_impl->BASE_URL + "/movie/search=" + url_query;
+        if (skip > 0) url += "/skip=" + std::to_string(skip);
+        url += ".json";
+        
         return m_impl->parseMetas(cmHttpGet(url), "Cinemeta");
     }
 

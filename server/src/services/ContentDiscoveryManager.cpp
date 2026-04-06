@@ -17,35 +17,44 @@ namespace media::services {
         spdlog::info("Content Discovery Manager initialized");
     }
 
-    namespace {
         void enrichAndDeduplicate(std::vector<DiscoveredContent>& list, TMDBFetcher* tmdb, TorrentioClient* tio) {
+            std::vector<std::future<void>> futures;
+            spdlog::info("Asynchronously enriching {} items...", list.size());
+
             for (auto& item : list) {
-                tmdb->enrichContent(item);
+                // Launch asynchronous task for EACH item to drastically reduce latency
+                futures.push_back(std::async(std::launch::async, [&item, tmdb, tio]() {
+                    tmdb->enrichContent(item);
 
-                if (!item.imdb_id.empty()) {
-                    auto type = item.source == "EZTV" ? "tv" : "movie";
-                    auto tio_res = tio->searchTorrentsByIMDB(item.imdb_id, type);
-                    if (!tio_res.empty() && !tio_res[0].torrents.empty()) {
-                        item.torrents.insert(item.torrents.end(), tio_res[0].torrents.begin(), tio_res[0].torrents.end());
+                    if (!item.imdb_id.empty()) {
+                        auto type = item.type.empty() ? (item.source == "EZTV" || item.source == "Nyaa" ? "tv" : "movie") : item.type;
+                        auto tio_res = tio->searchTorrentsByIMDB(item.imdb_id, type);
+                        if (!tio_res.empty() && !tio_res[0].torrents.empty()) {
+                            item.torrents.insert(item.torrents.end(), tio_res[0].torrents.begin(), tio_res[0].torrents.end());
+                        }
                     }
-                }
 
-                std::unordered_map<std::string, TorrentQuality> deduped;
-                for (const auto& t : item.torrents) {
-                    std::string hash_lower = t.hash;
-                    std::transform(hash_lower.begin(), hash_lower.end(), hash_lower.begin(), ::tolower);
-
-                    if (deduped.find(hash_lower) == deduped.end() || t.seeders > deduped[hash_lower].seeders) {
-                        deduped[hash_lower] = t;
+                    std::unordered_map<std::string, TorrentQuality> deduped;
+                    for (const auto& t : item.torrents) {
+                        std::string hash_lower = t.hash;
+                        std::transform(hash_lower.begin(), hash_lower.end(), hash_lower.begin(), ::tolower);
+                        if (deduped.find(hash_lower) == deduped.end() || t.seeders > deduped[hash_lower].seeders) {
+                            deduped[hash_lower] = t;
+                        }
                     }
-                }
-                item.torrents.clear();
-                for (const auto& [hash, tq] : deduped) {
-                    item.torrents.push_back(tq);
-                }
-                std::sort(item.torrents.begin(), item.torrents.end(), [](const TorrentQuality& a, const TorrentQuality& b){
-                    return a.seeders > b.seeders;
-                });
+                    item.torrents.clear();
+                    for (const auto& [hash, tq] : deduped) {
+                        item.torrents.push_back(tq);
+                    }
+                    std::sort(item.torrents.begin(), item.torrents.end(), [](const TorrentQuality& a, const TorrentQuality& b){
+                        return a.seeders > b.seeders;
+                    });
+                }));
+            }
+
+            // Await all parallel enrichment threads
+            for (auto& f : futures) {
+                f.wait(); 
             }
         }
     }
@@ -146,11 +155,11 @@ namespace media::services {
         return all_results;
     }
 
-    std::vector<DiscoveredContent> ContentDiscoveryManager::fetchMovies(int limit) {
+    std::vector<DiscoveredContent> ContentDiscoveryManager::fetchMovies(int limit, int page) {
         std::vector<DiscoveredContent> results;
         try {
-            auto cine = m_cinemeta->fetchPopular(limit);
-            auto tmdb = m_tmdb_catalog->fetchPopular(limit);
+            auto cine = m_cinemeta->fetchPopular(limit, page);
+            auto tmdb = m_tmdb_catalog->fetchPopular(limit, page);
             
             results.insert(results.end(), tmdb.begin(), tmdb.end());
             results.insert(results.end(), cine.begin(), cine.end());
@@ -162,11 +171,11 @@ namespace media::services {
         return results;
     }
 
-    std::vector<DiscoveredContent> ContentDiscoveryManager::fetchSeries(int limit) {
+    std::vector<DiscoveredContent> ContentDiscoveryManager::fetchSeries(int limit, int page) {
         std::vector<DiscoveredContent> results;
         try {
-            auto cine = m_cinemeta->fetchSeries(limit);
-            auto tmdb = m_tmdb_catalog->fetchSeries(limit);
+            auto cine = m_cinemeta->fetchSeries(limit, page);
+            auto tmdb = m_tmdb_catalog->fetchSeries(limit, page);
 
             results.insert(results.end(), tmdb.begin(), tmdb.end());
             results.insert(results.end(), cine.begin(), cine.end());
@@ -178,11 +187,11 @@ namespace media::services {
         return results;
     }
 
-    std::vector<DiscoveredContent> ContentDiscoveryManager::fetchAnime(int limit) {
+    std::vector<DiscoveredContent> ContentDiscoveryManager::fetchAnime(int limit, int page) {
         std::vector<DiscoveredContent> results;
         try {
             // Cinemeta doesn't have an Anime-specific root catalog by default, so we fall back to TMDB natively
-            auto tmdb = m_tmdb_catalog->fetchAnime(limit);
+            auto tmdb = m_tmdb_catalog->fetchAnime(limit, page);
 
             results.insert(results.end(), tmdb.begin(), tmdb.end());
 

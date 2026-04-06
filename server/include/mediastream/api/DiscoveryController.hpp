@@ -66,9 +66,13 @@ public:
     ENDPOINT_INFO(getMovies) {
         info->summary = "Get popular movies";
     }
-    ENDPOINT("GET", "/api/v1/discover/movies", getMovies) {
+    ENDPOINT("GET", "/api/v1/discover/movies", getMovies, REQUEST(std::shared_ptr<IncomingRequest>, request)) {
         try {
-            auto movies = m_discovery->fetchMovies(15);
+            int page = 1;
+            auto p = request->getQueryParameter("page");
+            if (p) page = std::stoi(p->std_str());
+
+            auto movies = m_discovery->fetchMovies(15, page);
             auto response = createResponse(Status::CODE_200, serializeToJson(movies));
             response->putHeader("Content-Type", "application/json");
             return response;
@@ -81,9 +85,13 @@ public:
     ENDPOINT_INFO(getSeries) {
         info->summary = "Get popular series";
     }
-    ENDPOINT("GET", "/api/v1/discover/series", getSeries) {
+    ENDPOINT("GET", "/api/v1/discover/series", getSeries, REQUEST(std::shared_ptr<IncomingRequest>, request)) {
         try {
-            auto series = m_discovery->fetchSeries(15);
+            int page = 1;
+            auto p = request->getQueryParameter("page");
+            if (p) page = std::stoi(p->std_str());
+
+            auto series = m_discovery->fetchSeries(15, page);
             auto response = createResponse(Status::CODE_200, serializeToJson(series));
             response->putHeader("Content-Type", "application/json");
             return response;
@@ -96,9 +104,13 @@ public:
     ENDPOINT_INFO(getAnime) {
         info->summary = "Get popular anime";
     }
-    ENDPOINT("GET", "/api/v1/discover/anime", getAnime) {
+    ENDPOINT("GET", "/api/v1/discover/anime", getAnime, REQUEST(std::shared_ptr<IncomingRequest>, request)) {
         try {
-            auto anime = m_discovery->fetchAnime(15);
+            int page = 1;
+            auto p = request->getQueryParameter("page");
+            if (p) page = std::stoi(p->std_str());
+
+            auto anime = m_discovery->fetchAnime(15, page);
             auto response = createResponse(Status::CODE_200, serializeToJson(anime));
             response->putHeader("Content-Type", "application/json");
             return response;
