@@ -3,6 +3,7 @@
 #include <spdlog/spdlog.h>
 #include <algorithm>
 #include <future>
+#include <set>
 
 namespace media::services {
 
@@ -143,14 +144,33 @@ namespace media::services {
 
         spdlog::info("Search '{}' returned {} raw results", query, all_results.size());
 
+        // Deduplicate results based on IDs (TMDB or IMDB)
+        std::vector<DiscoveredContent> unique_results;
+        std::set<std::string> seen_ids;
+        for (const auto& item : all_results) {
+            std::string id = item.tmdb_id.empty() ? item.imdb_id : item.tmdb_id;
+            if (!id.empty()) {
+                if (seen_ids.find(id) != seen_ids.end()) continue;
+                seen_ids.insert(id);
+            }
+            unique_results.push_back(item);
+        }
+        all_results = std::move(unique_results);
+
         // Sort results: Primary by Year (Desc), Secondary by Rating (Desc)
         std::sort(all_results.begin(), all_results.end(), [](const DiscoveredContent& a, const DiscoveredContent& b) {
             if (a.year != b.year) {
                 return a.year > b.year; // More recent first
             }
-            return a.rating > b.rating; // Higher rated first
+            return b.rating > a.rating; // Higher rated first (Wait, b.rating > a.rating is Ascending? No, a.rating > b.rating is Descending. Wait.)
         });
         
+        // Correct sorting for Descending: a > b
+        std::sort(all_results.begin(), all_results.end(), [](const DiscoveredContent& a, const DiscoveredContent& b) {
+            if (a.year != b.year) return a.year > b.year;
+            return a.rating > b.rating;
+        });
+
         // Cap the total results before enrichment to prevent 100+ Torrentio requests
         // using our 500ms rate limiter (which would take ~50s).
         if (all_results.size() > 20) {

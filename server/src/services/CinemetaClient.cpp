@@ -118,7 +118,7 @@ namespace media::services {
         return m_impl->parseMetas(response, "Cinemeta");
     }
 
-    std::vector<DiscoveredContent> CinemetaClient::search(const std::string& query, int limit, int page) {
+    std::vector<DiscoveredContent> CinemetaClient::search(const std::string& query, int /*limit*/, int /*page*/) {
         CURL* curl = curl_easy_init();
         std::string url_query = query;
         if (curl) {
@@ -130,12 +130,19 @@ namespace media::services {
             curl_easy_cleanup(curl);
         }
 
-        int skip = (page - 1) * limit;
-        std::string url = m_impl->BASE_URL + "/movie/search=" + url_query;
-        if (skip > 0) url += "/skip=" + std::to_string(skip);
-        url += ".json";
+        std::vector<DiscoveredContent> all_results;
         
-        return m_impl->parseMetas(cmHttpGet(url), "Cinemeta");
+        // Search Movies
+        std::string movie_url = m_impl->BASE_URL + "/movie/top/search=" + url_query + ".json";
+        auto movies = m_impl->parseMetas(cmHttpGet(movie_url), "Cinemeta");
+        all_results.insert(all_results.end(), movies.begin(), movies.end());
+
+        // Search Series
+        std::string series_url = m_impl->BASE_URL + "/series/top/search=" + url_query + ".json";
+        auto series = m_impl->parseMetas(cmHttpGet(series_url), "Cinemeta");
+        all_results.insert(all_results.end(), series.begin(), series.end());
+        
+        return all_results;
     }
 
     std::optional<DiscoveredContent> CinemetaClient::getById(const std::string& id) {

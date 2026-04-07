@@ -156,15 +156,26 @@ namespace media::services {
 
     std::vector<DiscoveredContent> TMDBCatalogClient::search(const std::string& query, int /*limit*/, int page) {
         if (m_impl->m_api_key.empty()) return {};
+        
         CURL* curl = curl_easy_init();
         std::string url_query = query;
         if (curl) {
-            char* output = curl_easy_escape(curl, query.c_str(), query.length());
-            if (output) { url_query = output; curl_free(output); }
+            // Only escape if it's not already looking like it's escaped (contains %)
+            if (query.find('%') == std::string::npos) {
+                char* output = curl_easy_escape(curl, query.c_str(), query.length());
+                if (output) { url_query = output; curl_free(output); }
+            }
             curl_easy_cleanup(curl);
         }
+
+        std::vector<DiscoveredContent> all_results;
+        
+        // TMDB Multi-search is good but can be noisy. Let's stick with it for now 
+        // but ensure the encoding is correct.
         std::string url = m_impl->BASE_URL + "/search/multi?query=" + url_query + "&language=en-US&page=" + std::to_string(page);
-        return m_impl->parseResults(tmdbCatHttpGet(url, m_impl->m_api_key), "TMDB");
+        auto results = m_impl->parseResults(tmdbCatHttpGet(url, m_impl->m_api_key), "TMDB");
+        
+        return results;
     }
 
     std::optional<DiscoveredContent> TMDBCatalogClient::getById(const std::string&) {
