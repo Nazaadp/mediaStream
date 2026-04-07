@@ -130,11 +130,11 @@ namespace media::core {
     // --- PROACTIVE MOOV ATOM BOOST ---
     // Called every second by the WS broadcaster alongside getSessionStatus().
     // As soon as a torrent has metadata and enters Downloading state, we boost
-    // the last 5% of pieces to top priority. These are the pieces most likely to
-    // contain the moov atom (MP4) or seek table (MKV). By doing this proactively,
-    // the end-of-file pieces are fetched in the background BEFORE the user clicks
-    // Stream — eliminating the 4-second on-demand wait that previously caused
-    // Timeout waiting for piece N errors.
+    // the last 5% of pieces to top priority AND set piece deadlines.
+    // Priority alone is insufficient — libtorrent will not fetch a piece
+    // out-of-order from the current sequential position unless a deadline is set.
+    // Deadlines convert a "preferred" piece into a time-critical piece that
+    // libtorrent actively requests from peers regardless of sequential order.
     void TorrentEngine::proactivelyBoostEndPieces() {
         auto handles = m_session.get_torrents();
         for (const auto& h : handles) {
@@ -154,9 +154,12 @@ namespace media::core {
             const int boost_from = total_pieces * 95 / 100;
             for (int i = boost_from; i < total_pieces; ++i) {
                 h.piece_priority(lt::piece_index_t(i), lt::top_priority);
+                // Stagger deadlines: first piece = 0ms, next = 500ms, etc.
+                // This tells libtorrent: «fetch these pieces out-of-order, urgently».
+                h.set_piece_deadline(lt::piece_index_t(i), (i - boost_from) * 500);
             }
             spdlog::info(
-                "Proactive moov boost: pieces {}-{} queued for hash {}",
+                "Proactive moov boost: pieces {}-{} queued (with deadlines) for hash {}",
                 boost_from, total_pieces - 1, hash
             );
             m_moov_boosted.insert(hash);
@@ -252,26 +255,34 @@ namespace media::core {
                     // (or MKV segment index). This seek lands on a piece far beyond the
                     // current sequential download position. We detect this by checking
                     // if the requested piece is in the last 15% of the torrent.
-                    // When detected: boost ALL remaining end pieces (not just the target)
-                    // so libtorrent delivers the full metadata block, not just one piece.
-                    // Also extend the wait window to 4000ms to give libtorrent time to
-                    // fulfill the out-of-order request from a peer connection.
                     const int total_pieces = h.torrent_file()->num_pieces();
                     const int piece_idx_int = static_cast<int>(piece_idx);
                     const bool is_moov_seek = piece_idx_int > (total_pieces * 85 / 100);
 
                     if (is_moov_seek) {
-                        // Prioritize every piece from piece_idx to end-of-file.
-                        // This ensures the full moov atom is available, not just one slice.
-                        spdlog::info(
-                            "Moov atom seek detected: boosting priority for pieces {}-{}",
-                            piece_idx_int, total_pieces - 1
-                        );
-                        for (int i = piece_idx_int; i < total_pieces; ++i) {
-                            h.piece_priority(lt::piece_index_t(i), lt::top_priority);
-                            // Stagger deadlines so libtorrent gets them in order
-                            h.set_piece_deadline(lt::piece_index_t(i),
-                                                 (i - piece_idx_int) * 200);
+                        // Guard: only set deadlines once per moov-seek piece to avoid
+                        // thrashing libtorrent's scheduler on every 503 retry from the
+                        // frontend. Re-setting deadlines repeatedly resets the countdown,
+                        // which can delay delivery rather than accelerate it.
+                        std::string moov_key = info_hash_str + ":" + std::to_string(piece_idx_int);
+                        if (!m_moov_deadline_set.count(moov_key)) {
+                            spdlog::info(
+                                "Moov atom seek detected: boosting priority for pieces {}-{}",
+                                piece_idx_int, total_pieces - 1
+                            );
+                            for (int i = piece_idx_int; i < total_pieces; ++i) {
+                                h.piece_priority(lt::piece_index_t(i), lt::top_priority);
+                                // Stagger deadlines so libtorrent fetches in sequential order
+                                // starting immediately (0ms for the first critical piece).
+                                h.set_piece_deadline(lt::piece_index_t(i),
+                                                     (i - piece_idx_int) * 200);
+                            }
+                            m_moov_deadline_set.insert(moov_key);
+                        } else {
+                            spdlog::debug(
+                                "Moov seek for piece {} already scheduled, waiting...",
+                                piece_idx_int
+                            );
                         }
                     } else {
                         // Normal sequential piece: prioritize this piece + next 3
@@ -286,11 +297,13 @@ namespace media::core {
                         }
                     }
 
-                    // Wait longer for moov seeks — they require an out-of-order download
-                    // from a peer connection that's currently serving sequential pieces.
-                    // 4000ms gives libtorrent enough time to pivot to the new priority.
-                    // Normal sequential pieces are available nearly instantly (500ms).
-                    const int max_wait_ms = is_moov_seek ? 4000 : 500;
+                    // Moov seeks require 15s: the proactive boost sets deadlines but
+                    // libtorrent still needs to negotiate an out-of-order request with a
+                    // peer and receive the piece data. In testing, delivery took up to
+                    // 56s total (14 × 4s retries) — 15s per attempt with frontend retries
+                    // covers this without holding the oatpp thread pool hostage too long.
+                    // Normal sequential pieces arrive in <500ms (already buffered).
+                    const int max_wait_ms = is_moov_seek ? 15000 : 500;
                     int waited = 0;
                     while (!h.have_piece(piece_idx) && waited < max_wait_ms) {
                         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -299,8 +312,8 @@ namespace media::core {
 
                     if (!h.have_piece(piece_idx)) {
                         spdlog::warn(
-                            "Timeout waiting for piece {} to download (moov_seek={}).",
-                            piece_idx_int, is_moov_seek
+                            "Timeout waiting for piece {} to download (moov_seek={}, waited={}ms).",
+                            piece_idx_int, is_moov_seek, waited
                         );
                         return false;
                     }
