@@ -143,7 +143,12 @@ public:
         
         // Determine mime type from extension
         std::string mime = "video/mp4";
-        if (fp.ends_with(".mkv")) mime = "video/webm";
+        // MKV MIME type note: use video/x-matroska (not video/webm).
+        // WebM is a restricted Matroska subset (VP8/VP9/AV1 only). Serving H.264-in-MKV
+        // as video/webm makes Chromium activate its strict WebM demuxer, which rejects
+        // the H.264 video track → audio plays but videoHeight stays 0.
+        // video/x-matroska routes through the broader Matroska demuxer which handles H.264.
+        if (fp.ends_with(".mkv")) mime = "video/x-matroska";
         else if (fp.ends_with(".avi")) mime = "video/x-msvideo";
         else if (fp.ends_with(".webm")) mime = "video/webm";
         response->putHeader("Content-Type", mime); 
