@@ -5,8 +5,6 @@
 .env
 quick-start-vm.sh
 /BrunoRequests
-/AGENTS.md
-/MCPs.md
 /QUICKSTART.md
 /TODO.md
 /SECURITY_CHANGES.md
@@ -26,4 +24,3 @@ fix_database.py
 /clientTauri/dist
 
 *.png
-CONTEXT.md
