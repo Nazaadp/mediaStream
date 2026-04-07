@@ -302,8 +302,13 @@ namespace media::core {
                     // peer and receive the piece data. In testing, delivery took up to
                     // 56s total (14 × 4s retries) — 15s per attempt with frontend retries
                     // covers this without holding the oatpp thread pool hostage too long.
-                    // Normal sequential pieces arrive in <500ms (already buffered).
-                    const int max_wait_ms = is_moov_seek ? 15000 : 500;
+                    // Sequential pieces: 8s timeout instead of 500ms.
+                    // At low download progress (5-15%), libtorrent may not yet have
+                    // buffered the next few sequential pieces — a 503 returned mid-stream
+                    // triggers FFmpegDemuxer: PIPELINE_ERROR_READ (MediaError code 2) in
+                    // WebView2, which the frontend retry loop cannot safely handle.
+                    // Waiting up to 8s server-side prevents the mid-stream 503 entirely.
+                    const int max_wait_ms = is_moov_seek ? 15000 : 8000;
                     int waited = 0;
                     while (!h.have_piece(piece_idx) && waited < max_wait_ms) {
                         std::this_thread::sleep_for(std::chrono::milliseconds(100));

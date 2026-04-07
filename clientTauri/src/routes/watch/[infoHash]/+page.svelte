@@ -11,10 +11,11 @@
     // discarding the current playback position and HTTP connection.
     let videoSrc = null;
     let streamRetryCount = 0;    // Counts 503-type retries so we don't loop forever
-    // 10 retries × 2s frontend gap + 15s backend wait per attempt = ~170s total safety net.
-    // The backend now waits 15s before returning 503, so the moov atom typically arrives
-    // within 1-3 retries even on slow peers. 10 is a generous upper bound.
+    // 10 retries covers both initial-load 503s (code 4) and mid-stream 503s (code 2).
+    // Backend now waits 8s for sequential pieces and 15s for moov seeks, so retries
+    // should be rare — 10 is a safe upper bound.
     const MAX_STREAM_RETRIES = 10;
+    let savedTime = 0;            // Saved currentTime before a mid-stream retry
 
     let videoElement;
 
@@ -350,19 +351,27 @@
         const code = videoElement?.error?.code;
         // MediaError codes:
         //   1 = MEDIA_ERR_ABORTED   (user aborted)
-        //   2 = MEDIA_ERR_NETWORK   (network error mid-stream)
+        //   2 = MEDIA_ERR_NETWORK   (network error mid-stream — see below)
         //   3 = MEDIA_ERR_DECODE    (decode/codec error)
         //   4 = MEDIA_ERR_SRC_NOT_SUPPORTED (503/404 from server, or unsupported codec)
         //
-        // Code 4 here almost always means the backend returned 503 (piece not yet ready).
-        // The browser treats 503 as "no supported source" rather than a transient error.
-        // We implement the retry logic the browser refuses to do itself.
-        const isTransient = code === 4 && streamRetryCount < MAX_STREAM_RETRIES;
+        // Code 4 fires when the FIRST request to the server returns 503
+        //   (piece not yet ready before any data is played).
+        // Code 2 fires when a 503 is returned MID-STREAM, after the video has already
+        //   started playing. WebView2's FFmpegDemuxer raises PIPELINE_ERROR_READ
+        //   ("FFmpegDemuxer: data source error") and surfaces it as code 2, not code 4.
+        // Both are caused by the same transient condition: the next sequential piece
+        //   is not yet available. Both must be retried the same way.
+        const isTransient = (code === 4 || code === 2) && streamRetryCount < MAX_STREAM_RETRIES;
 
         if (isTransient) {
             streamRetryCount++;
+            // Save playback position so we can seek back after the retry reconnects.
+            // On a mid-stream error (code 2) currentTime is meaningful (e.g. 0.686s).
+            // On a first-load error (code 4) currentTime is 0, so seeking does no harm.
+            savedTime = videoElement?.currentTime ?? 0;
             console.warn(
-                `Stream 503 — piece not ready. Retry ${streamRetryCount}/${MAX_STREAM_RETRIES} in 2s...`
+                `Stream error (code ${code}) — piece not ready. Retry ${streamRetryCount}/${MAX_STREAM_RETRIES} in 2s… (savedTime=${savedTime.toFixed(2)}s)`
             );
             setTimeout(() => {
                 if (videoElement && isReadyToPlay && !isDestroyed) {
@@ -370,12 +379,16 @@
                     // videoElement.load() alone doesn't work after MEDIA_ERR_SRC_NOT_SUPPORTED.
                     videoElement.src = videoSrc;
                     videoElement.load();
+                    // After load(), restore position if we were mid-stream.
+                    if (savedTime > 0) {
+                        videoElement.currentTime = savedTime;
+                    }
                     videoElement.play().catch(() => {});
                 }
             }, 2000);
         } else {
-            // Permanent failure: exhausted retries (moov atom) or codec error
-            console.error("Video Error (permanent):", code, e);
+            // Permanent failure: exhausted retries or genuine codec/decode error
+            console.error("Video Error (permanent):", code, videoElement?.error?.message, e);
             if (code === 3) {
                 // Decode error = codec not supported by this WebView
                 noVideoHint = 'codec';
