@@ -5,9 +5,11 @@
 
     // Use the Svelte store directly to avoid reactive closure scope bugs
     const infoHash = $page.params.infoHash;
-    $: videoSrc = isReadyToPlay
-        ? `${import.meta.env.VITE_API_URL}/api/v1/stream/${infoHash}`
-        : null;
+    // IMPORTANT: videoSrc must be a stable `let`, NOT a `$:` reactive declaration.
+    // A $: reactive re-evaluates whenever isReadyToPlay changes (even true→true re-assignment
+    // from WS reconnects), which tells the browser to reload the video from byte 0,
+    // discarding the current playback position and HTTP connection.
+    let videoSrc = null;
 
     let videoElement;
 
@@ -56,14 +58,22 @@
                     // available before the browser tries to parse video metadata.
                     // At 2%, libtorrent pre-allocated zeros may be served instead of
                     // the real header, causing videoHeight=0 on loadedmetadata.
-                    if (torrentProgress > 0.05 && !isReadyToPlay) {
+                    // Guard: never start playback during metadata-download phase.
+                    // During 'Fetching Metadata', libtorrent hasn't downloaded any pieces
+                    // yet — ts.progress may read stale/zero values and no file bytes exist.
+                    const isMetadataPhase = myTorrent.state === "Fetching Metadata";
+
+                    if (torrentProgress > 0.05 && !isReadyToPlay && !isMetadataPhase) {
                         console.log(
                             "Torrent is ready! Initializing stream.",
                             "progress: ",
                             torrentProgress,
                         );
                         isReadyToPlay = true;
-                        stopPolling(); // WS delivered the update, polling is no longer needed
+                        // Set videoSrc exactly once — never reassign after this point.
+                        // Reassigning src resets the browser's video element to position 0.
+                        videoSrc = `${import.meta.env.VITE_API_URL}/api/v1/stream/${infoHash}`;
+                        stopPolling();
                     }
                 } else {
                     console.warn(
@@ -99,8 +109,11 @@
             if (myTorrent) {
                 torrentProgress = myTorrent.progress;
                 torrentState = myTorrent.state;
-                if (torrentProgress > 0.02 && !isReadyToPlay) {
+                // Same guards as WS handler — require actual download phase, not metadata.
+                const isMetadataPhase = myTorrent.state === "Fetching Metadata";
+                if (torrentProgress > 0.05 && !isReadyToPlay && !isMetadataPhase) {
                     isReadyToPlay = true;
+                    videoSrc = `${import.meta.env.VITE_API_URL}/api/v1/stream/${infoHash}`;
                     stopPolling();
                 }
             }

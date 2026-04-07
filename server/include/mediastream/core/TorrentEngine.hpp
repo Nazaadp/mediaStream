@@ -40,7 +40,10 @@ namespace media::core {
 
         // Streaming Support
         [[nodiscard]] std::optional<std::string> getLargestFilePath(const std::string& info_hash) const;
-        void waitForPiece(const std::string& info_hash, uint64_t file_offset);
+        // Returns true if the piece was available or became available within the wait window.
+        // Returns false if the timeout elapsed and the piece is NOT yet downloaded.
+        // Callers MUST check the return value and NOT serve data on false (zeros in pre-alloc).
+        [[nodiscard]] bool waitForPiece(const std::string& info_hash, uint64_t file_offset);
 
     private:
         // --- 2. DIRECT IMPLEMENTATION (Matches your .cpp) ---

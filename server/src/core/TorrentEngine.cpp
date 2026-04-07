@@ -183,13 +183,15 @@ namespace media::core {
     }
 
     // --- WAIT FOR PIECE ---
-    void TorrentEngine::waitForPiece(const std::string& info_hash_str, uint64_t file_offset) {
+    // Returns true if the requested piece became available within the timeout.
+    // Returns false if the torrent was not found, metadata not ready, or timeout elapsed.
+    bool TorrentEngine::waitForPiece(const std::string& info_hash_str, uint64_t file_offset) {
         std::vector<lt::torrent_handle> handles = m_session.get_torrents();
         for (const auto& h : handles) {
             if (!h.is_valid()) continue;
             
             if (to_hex_string(h.info_hash()) == info_hash_str) {
-                if (!h.torrent_file()) return;
+                if (!h.torrent_file()) return false; // Metadata not yet downloaded
                 
                 auto finfo = h.torrent_file()->files();
                 int largest_index = findLargestFileIndex(finfo);
@@ -199,12 +201,15 @@ namespace media::core {
                     int64_t torrent_offset = finfo.file_offset(lt::file_index_t(largest_index)) + file_offset;
                     // Calculate piece index
                     int piece_length = h.torrent_file()->piece_length();
-                    if (piece_length <= 0) return;
+                    if (piece_length <= 0) return false;
                     
                     lt::piece_index_t piece_idx(torrent_offset / piece_length);
 
                     // If piece index is beyond total pieces, return
-                    if (piece_idx >= lt::piece_index_t(h.torrent_file()->num_pieces())) return;
+                    if (piece_idx >= lt::piece_index_t(h.torrent_file()->num_pieces())) return false;
+
+                    // If the piece is already downloaded, return immediately
+                    if (h.have_piece(piece_idx)) return true;
 
                     // Prioritize piece and a few subsequent pieces for smooth streaming
                     h.set_piece_deadline(piece_idx, 0, lt::torrent_handle::alert_when_available);
@@ -215,11 +220,11 @@ namespace media::core {
                         lt::piece_index_t next_p(static_cast<int>(piece_idx) + i);
                         if (next_p < lt::piece_index_t(h.torrent_file()->num_pieces())) {
                             h.piece_priority(next_p, lt::top_priority);
-                            h.set_piece_deadline(next_p, i * 1000); // 1, 2, 3 seconds deadline
+                            h.set_piece_deadline(next_p, i * 1000);
                         }
                     }
 
-                    // Block and wait for the piece to be downloaded (max 0.5 seconds limit to prevent oatpp HTTP thread starvation)
+                    // Block and wait for the piece (max 500ms to prevent HTTP thread starvation)
                     int max_wait_ms = 500;
                     int waited = 0;
                     while (!h.have_piece(piece_idx) && waited < max_wait_ms) {
@@ -227,13 +232,16 @@ namespace media::core {
                         waited += 100;
                     }
 
-                    if (waited >= max_wait_ms) {
-                         spdlog::warn("Timeout waiting for piece {} to download.", static_cast<int>(piece_idx));
+                    if (!h.have_piece(piece_idx)) {
+                        spdlog::warn("Timeout waiting for piece {} to download.", static_cast<int>(piece_idx));
+                        return false; // Caller must NOT serve zeros
                     }
+                    return true;
                 }
-                return;
+                return false;
             }
         }
+        return false; // Torrent not found in session
     }
 
 } // namespace media::core

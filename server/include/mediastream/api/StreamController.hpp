@@ -95,10 +95,17 @@ public:
             end = file_size - 1;
         }
 
-        // --- THE MAGIC FIX FOR SEEKING ---
-        // Block and wait for libtorrent to download the requested start bytes 
-        // to avoid serving zeros from pre-allocated files.
-        m_engine->waitForPiece(target_hash, start);
+        // Block and wait for the requested piece. If the piece is not yet downloaded
+        // (timeout), return 503 Retry-After so the browser re-requests in 2 seconds
+        // instead of receiving pre-allocated zeros from the file, which poisons the
+        // browser's video decoder and causes videoHeight=0 on loadedmetadata.
+        bool piece_ready = m_engine->waitForPiece(target_hash, start);
+        if (!piece_ready) {
+            auto response = createResponse(Status::CODE_503, "Piece not yet available");
+            response->putHeader("Retry-After", "2");
+            response->putHeader("Content-Type", "text/plain");
+            return response;
+        }
 
         uint64_t chunk_size = end - start + 1;
         
