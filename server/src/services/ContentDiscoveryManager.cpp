@@ -183,11 +183,11 @@ namespace media::services {
         return all_results;
     }
 
-    std::vector<DiscoveredContent> ContentDiscoveryManager::fetchMovies(int limit, int page) {
+    std::vector<DiscoveredContent> ContentDiscoveryManager::fetchMovies(int limit, int page, const std::string& genre, const std::string& language) {
         std::vector<DiscoveredContent> results;
         try {
-            auto cine = m_cinemeta->fetchPopular(limit, page);
-            auto tmdb = m_tmdb_catalog->fetchPopular(limit, page);
+            auto cine = m_cinemeta->fetchPopular(limit, page, genre, language);
+            auto tmdb = m_tmdb_catalog->fetchPopular(limit, page, genre, language);
 
             results.insert(results.end(), tmdb.begin(), tmdb.end());
             results.insert(results.end(), cine.begin(), cine.end());
@@ -205,11 +205,11 @@ namespace media::services {
         return results;
     }
 
-    std::vector<DiscoveredContent> ContentDiscoveryManager::fetchSeries(int limit, int page) {
+    std::vector<DiscoveredContent> ContentDiscoveryManager::fetchSeries(int limit, int page, const std::string& genre, const std::string& language) {
         std::vector<DiscoveredContent> results;
         try {
-            auto cine = m_cinemeta->fetchSeries(limit, page);
-            auto tmdb = m_tmdb_catalog->fetchSeries(limit, page);
+            auto cine = m_cinemeta->fetchSeries(limit, page, genre, language);
+            auto tmdb = m_tmdb_catalog->fetchSeries(limit, page, genre, language);
 
             results.insert(results.end(), tmdb.begin(), tmdb.end());
             results.insert(results.end(), cine.begin(), cine.end());
@@ -225,11 +225,11 @@ namespace media::services {
         return results;
     }
 
-    std::vector<DiscoveredContent> ContentDiscoveryManager::fetchAnime(int limit, int page) {
+    std::vector<DiscoveredContent> ContentDiscoveryManager::fetchAnime(int limit, int page, const std::string& genre, const std::string& language) {
         std::vector<DiscoveredContent> results;
         try {
             // Cinemeta doesn't have an Anime-specific root catalog by default, so we fall back to TMDB natively
-            auto tmdb = m_tmdb_catalog->fetchAnime(limit, page);
+            auto tmdb = m_tmdb_catalog->fetchAnime(limit, page, genre, language);
 
             results.insert(results.end(), tmdb.begin(), tmdb.end());
 

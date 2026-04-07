@@ -98,7 +98,7 @@ namespace media::services {
         curl_global_cleanup();
     }
 
-    std::vector<DiscoveredContent> CinemetaClient::fetchPopular(int limit, int page) {
+    std::vector<DiscoveredContent> CinemetaClient::fetchPopular(int limit, int page, const std::string& genre, const std::string& language) {
         spdlog::info("Fetching popular movies from Cinemeta (page {})...", page);
         int skip = (page - 1) * limit; // Map page directly to limit chunk size
         std::string url = m_impl->BASE_URL + "/movie/top";
@@ -108,7 +108,7 @@ namespace media::services {
         return m_impl->parseMetas(response, "Cinemeta");
     }
 
-    std::vector<DiscoveredContent> CinemetaClient::fetchSeries(int limit, int page) {
+    std::vector<DiscoveredContent> CinemetaClient::fetchSeries(int limit, int page, const std::string& genre, const std::string& language) {
         spdlog::info("Fetching popular series from Cinemeta (page {})...", page);
         int skip = (page - 1) * limit;
         std::string url = m_impl->BASE_URL + "/series/top";
@@ -118,7 +118,7 @@ namespace media::services {
         return m_impl->parseMetas(response, "Cinemeta");
     }
 
-    std::vector<DiscoveredContent> CinemetaClient::search(const std::string& query, int /*limit*/, int /*page*/) {
+    std::vector<DiscoveredContent> CinemetaClient::search(const std::string& query, int /*limit*/, int /*page*/, const std::string& genre, const std::string& language) {
         CURL* curl = curl_easy_init();
         std::string url_query = query;
         if (curl) {

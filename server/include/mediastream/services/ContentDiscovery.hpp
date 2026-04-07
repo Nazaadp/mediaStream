@@ -44,10 +44,10 @@ namespace media::services {
         virtual ~IContentDiscovery() = default;
         
         // Fetch popular/trending content
-        virtual std::vector<DiscoveredContent> fetchPopular(int limit = 20, int page = 1) = 0;
+        virtual std::vector<DiscoveredContent> fetchPopular(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") = 0;
         
         // Search for specific content
-        virtual std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1) = 0;
+        virtual std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") = 0;
         
         // Get content by ID (if supported)
         virtual std::optional<DiscoveredContent> getById(const std::string& id) = 0;
@@ -59,8 +59,8 @@ namespace media::services {
         YTSClient();
         ~YTSClient() override;
 
-        std::vector<DiscoveredContent> fetchPopular(int limit = 20, int page = 1) override;
-        std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1) override;
+        std::vector<DiscoveredContent> fetchPopular(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") override;
+        std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") override;
         std::optional<DiscoveredContent> getById(const std::string& id) override;
 
     private:
@@ -74,8 +74,8 @@ namespace media::services {
         EZTVClient();
         ~EZTVClient() override;
 
-        std::vector<DiscoveredContent> fetchPopular(int limit = 20, int page = 1) override;
-        std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1) override;
+        std::vector<DiscoveredContent> fetchPopular(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") override;
+        std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") override;
         std::optional<DiscoveredContent> getById(const std::string& id) override;
 
     private:
@@ -89,8 +89,8 @@ namespace media::services {
         NyaaClient();
         ~NyaaClient() override;
 
-        std::vector<DiscoveredContent> fetchPopular(int limit = 20, int page = 1) override;
-        std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1) override;
+        std::vector<DiscoveredContent> fetchPopular(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") override;
+        std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") override;
         std::optional<DiscoveredContent> getById(const std::string& id) override;
 
     private:
@@ -104,8 +104,8 @@ namespace media::services {
         TorrentioClient();
         ~TorrentioClient() override;
 
-        std::vector<DiscoveredContent> fetchPopular(int limit = 20, int page = 1) override;
-        std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1) override;
+        std::vector<DiscoveredContent> fetchPopular(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") override;
+        std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") override;
         std::optional<DiscoveredContent> getById(const std::string& id) override;
 
         // Specific Torrentio Fetch for precise matching
@@ -126,7 +126,7 @@ namespace media::services {
         std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1) override;
         std::optional<DiscoveredContent> getById(const std::string& id) override;
 
-        std::vector<DiscoveredContent> fetchSeries(int limit = 20, int page = 1);
+        std::vector<DiscoveredContent> fetchSeries(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "");
 
     private:
         class Impl;
@@ -139,12 +139,12 @@ namespace media::services {
         TMDBCatalogClient();
         ~TMDBCatalogClient() override;
 
-        std::vector<DiscoveredContent> fetchPopular(int limit = 20, int page = 1) override;
-        std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1) override;
+        std::vector<DiscoveredContent> fetchPopular(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") override;
+        std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") override;
         std::optional<DiscoveredContent> getById(const std::string& id) override;
 
-        std::vector<DiscoveredContent> fetchSeries(int limit = 20, int page = 1);
-        std::vector<DiscoveredContent> fetchAnime(int limit = 20, int page = 1);
+        std::vector<DiscoveredContent> fetchSeries(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "");
+        std::vector<DiscoveredContent> fetchAnime(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "");
 
     private:
         class Impl;
@@ -166,9 +166,9 @@ namespace media::services {
         std::vector<DiscoveredContent> searchAll(const std::string& query, int limit_per_source = 20);
         
         // Fetch by type
-        std::vector<DiscoveredContent> fetchMovies(int limit = 20, int page = 1);
-        std::vector<DiscoveredContent> fetchSeries(int limit = 20, int page = 1);
-        std::vector<DiscoveredContent> fetchAnime(int limit = 20, int page = 1);
+        std::vector<DiscoveredContent> fetchMovies(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "");
+        std::vector<DiscoveredContent> fetchSeries(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "");
+        std::vector<DiscoveredContent> fetchAnime(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "");
 
     private:
         std::unique_ptr<YTSClient> m_yts;

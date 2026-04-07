@@ -158,7 +158,7 @@ namespace media::services {
     NyaaClient::~NyaaClient() = default;
 
     // Fetch Popular Anime
-    std::vector<DiscoveredContent> NyaaClient::fetchPopular(int limit, int /*page*/) {
+    std::vector<DiscoveredContent> NyaaClient::fetchPopular(int limit, int /*page*/, const std::string& genre, const std::string& language) {
         // Fetch from Nyaa RSS feed (sorted by seeders)
         std::string url = m_impl->BASE_URL + "/?page=rss&f=2&c=1_0&s=seeders&o=desc";
 
@@ -183,7 +183,7 @@ namespace media::services {
     }
 
     // Search Anime
-    std::vector<DiscoveredContent> NyaaClient::search(const std::string& query, int limit, int /*page*/) {
+    std::vector<DiscoveredContent> NyaaClient::search(const std::string& query, int limit, int /*page*/, const std::string& genre, const std::string& language) {
         // URL encode query (simple version)
         std::string encoded_query = query;
         std::replace(encoded_query.begin(), encoded_query.end(), ' ', '+');

@@ -75,7 +75,12 @@ public:
             auto p = request->getQueryParameter("page");
             if (p) page = std::stoi(p->c_str());
 
-            auto movies = m_discovery->fetchMovies(15, page);
+            auto g = request->getQueryParameter("genre");
+            auto l = request->getQueryParameter("language");
+            std::string genre = g ? g->c_str() : "";
+            std::string language = l ? l->c_str() : "";
+
+            auto movies = m_discovery->fetchMovies(15, page, genre, language);
             auto response = createResponse(Status::CODE_200, serializeToJson(movies));
             response->putHeader("Content-Type", "application/json");
             return response;
@@ -94,7 +99,12 @@ public:
             auto p = request->getQueryParameter("page");
             if (p) page = std::stoi(p->c_str());
 
-            auto series = m_discovery->fetchSeries(15, page);
+            auto g = request->getQueryParameter("genre");
+            auto l = request->getQueryParameter("language");
+            std::string genre = g ? g->c_str() : "";
+            std::string language = l ? l->c_str() : "";
+
+            auto series = m_discovery->fetchSeries(15, page, genre, language);
             auto response = createResponse(Status::CODE_200, serializeToJson(series));
             response->putHeader("Content-Type", "application/json");
             return response;
@@ -113,7 +123,12 @@ public:
             auto p = request->getQueryParameter("page");
             if (p) page = std::stoi(p->c_str());
 
-            auto anime = m_discovery->fetchAnime(15, page);
+            auto g = request->getQueryParameter("genre");
+            auto l = request->getQueryParameter("language");
+            std::string genre = g ? g->c_str() : "";
+            std::string language = l ? l->c_str() : "";
+
+            auto anime = m_discovery->fetchAnime(15, page, genre, language);
             auto response = createResponse(Status::CODE_200, serializeToJson(anime));
             response->putHeader("Content-Type", "application/json");
             return response;

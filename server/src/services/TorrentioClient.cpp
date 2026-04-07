@@ -160,11 +160,11 @@ namespace media::services {
 
     TorrentioClient::~TorrentioClient() = default;
 
-    std::vector<DiscoveredContent> TorrentioClient::fetchPopular(int /*limit*/, int /*page*/) {
+    std::vector<DiscoveredContent> TorrentioClient::fetchPopular(int /*limit*/, int /*page*/, const std::string& genre, const std::string& language) {
         return {}; // Torrentio doesn't support generic 'popular' fetching without IMDB
     }
 
-    std::vector<DiscoveredContent> TorrentioClient::search(const std::string& /*query*/, int /*limit*/, int /*page*/) {
+    std::vector<DiscoveredContent> TorrentioClient::search(const std::string& /*query*/, int /*limit*/, int /*page*/, const std::string& genre, const std::string& language) {
         return {}; // Non-IMDB search not supported natively
     }
 
