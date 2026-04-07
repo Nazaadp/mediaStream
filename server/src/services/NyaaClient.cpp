@@ -183,7 +183,7 @@ namespace media::services {
     }
 
     // Search Anime
-    std::vector<DiscoveredContent> NyaaClient::search(const std::string& query, int limit, int /*page*/, const std::string& genre, const std::string& language) {
+    std::vector<DiscoveredContent> NyaaClient::search(const std::string& query, int limit, int /*page*/, [[maybe_unused]] const std::string& genre, [[maybe_unused]] const std::string& language) {
         // URL encode query (simple version)
         std::string encoded_query = query;
         std::replace(encoded_query.begin(), encoded_query.end(), ' ', '+');
