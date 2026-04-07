@@ -192,7 +192,26 @@ namespace media::core {
             }
 
             s.download_rate = ts.download_payload_rate;
-            // s.num_peers = ts.num_peers; // Uncomment if added to struct
+
+            // Populate file metadata when torrent info is available.
+            // These stay empty during "Fetching Metadata" (no torrent_file yet).
+            if (h.torrent_file()) {
+                auto finfo = h.torrent_file()->files();
+                int largest_index = findLargestFileIndex(finfo);
+                if (largest_index != -1) {
+                    std::filesystem::path fsp =
+                        m_download_dir / finfo.file_path(lt::file_index_t(largest_index));
+
+                    s.filename  = fsp.filename().string();
+                    s.size_bytes = finfo.file_size(lt::file_index_t(largest_index));
+
+                    std::string ext = fsp.extension().string();
+                    if      (ext == ".mkv")  s.mime_type = "video/x-matroska";
+                    else if (ext == ".avi")  s.mime_type = "video/x-msvideo";
+                    else if (ext == ".webm") s.mime_type = "video/webm";
+                    else                     s.mime_type = "video/mp4";
+                }
+            }
 
             statuses.push_back(s);
         }

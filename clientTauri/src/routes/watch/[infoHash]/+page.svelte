@@ -25,6 +25,7 @@
     let error = null;
     let noVideoHint = null; // null = no hint; 'codec' = HEVC missing; 'moov' = atom not ready
     let codecHintTimer = null; // Timer for the codec diagnostic check
+    let detectedFilename = '';  // Filled by /info endpoint for better codec hint messages
 
     // Player State
     let currentTime = 0;
@@ -42,6 +43,76 @@
     let torrentState = "Connecting to peers...";
     let pollingInterval = null; // Fallback REST polling when WS is slow
 
+    /**
+     * Proactively detects whether this torrent's file is encoded in HEVC/H.265,
+     * which WebView2 cannot decode without the paid HEVC Video Extensions.
+     * Combines two signals for reliability:
+     *   1. Filename pattern: x265, HEVC, H.265, 10bit, HDR10, etc.
+     *   2. MediaCapabilities.decodingInfo() — asks the runtime whether HEVC is decodable.
+     * Sets noVideoHint='codec' BEFORE videoSrc is assigned so the warning appears
+     * immediately instead of after audio starts playing on a black screen.
+     */
+    async function probeHevcSupport(filename) {
+        detectedFilename = filename;
+        // Common HEVC indicators found in torrent release names
+        const HEVC_PATTERN = /\b(x265|h\.?265|hevc|10.?bit|hdr10?|dv|dolby.?vision|hi10p)\b/i;
+        const looksLikeHevc = HEVC_PATTERN.test(filename);
+
+        if (!looksLikeHevc) {
+            // Filename gives no HEVC signal — assume H.264, nothing to warn about
+            return;
+        }
+
+        // Filename suggests HEVC. Confirm with MediaCapabilities API.
+        // If the API is unavailable (older WebView2), trust the filename pattern alone.
+        if (navigator.mediaCapabilities) {
+            try {
+                const { supported } = await navigator.mediaCapabilities.decodingInfo({
+                    type: 'file',
+                    video: {
+                        contentType: 'video/mp4; codecs="hvc1.1.6.L93.B0"',
+                        width: 1920, height: 1080,
+                        bitrate: 10_000_000,
+                        framerate: 24
+                    }
+                });
+                if (!supported) {
+                    console.warn('Codec pre-check: HEVC not supported by this WebView2. File:', filename);
+                    noVideoHint = 'codec';
+                }
+            } catch (err) {
+                // API threw (e.g. unsupported contentType string in older Edge builds).
+                // Fall back to trusting the filename pattern.
+                console.warn('MediaCapabilities.decodingInfo() threw, trusting filename pattern:', err);
+                noVideoHint = 'codec';
+            }
+        } else {
+            // No MediaCapabilities API — trust filename pattern
+            console.warn('MediaCapabilities unavailable, HEVC pattern matched in filename:', filename);
+            noVideoHint = 'codec';
+        }
+    }
+
+    /**
+     * Fetches /info for the torrent and runs probeHevcSupport().
+     * Returns true if the probe completed (even if codec is fine).
+     * Errors are swallowed — the stream should still start if /info fails.
+     */
+    async function runCodecProbe() {
+        try {
+            const res = await fetch(
+                `${import.meta.env.VITE_API_URL}/api/v1/stream/${infoHash}/info`
+            );
+            if (res.ok) {
+                const info = await res.json();
+                await probeHevcSupport(info.filename);
+            }
+        } catch (err) {
+            console.warn('Codec probe fetch failed (non-fatal):', err);
+        }
+        return true;
+    }
+
     function connectWebSocket() {
         ws = new WebSocket(`${import.meta.env.VITE_WS_URL}/api/v1/ws/status`);
 
@@ -49,7 +120,7 @@
             console.log("WebSocket connected for status updates");
         };
 
-        ws.onmessage = (event) => {
+        ws.onmessage = async (event) => {
             try {
                 const statusList = JSON.parse(event.data);
                 const myTorrent = statusList.find(
@@ -77,6 +148,10 @@
                             torrentProgress,
                         );
                         isReadyToPlay = true;
+                        // Run codec probe BEFORE assigning videoSrc so that the HEVC
+                        // warning appears immediately, not after audio starts on a
+                        // black screen. runCodecProbe() never throws — errors are swallowed.
+                        await runCodecProbe();
                         // Set videoSrc exactly once — never reassign after this point.
                         // Reassigning src resets the browser's video element to position 0.
                         videoSrc = `${import.meta.env.VITE_API_URL}/api/v1/stream/${infoHash}`;
@@ -120,6 +195,8 @@
                 const blockedState = myTorrent.state === "Fetching Metadata" || myTorrent.state === "Checking";
                 if (torrentProgress > 0.05 && !isReadyToPlay && !blockedState) {
                     isReadyToPlay = true;
+                    // Mirror the WS handler: probe for HEVC before assigning videoSrc
+                    await runCodecProbe();
                     videoSrc = `${import.meta.env.VITE_API_URL}/api/v1/stream/${infoHash}`;
                     stopPolling();
                 }

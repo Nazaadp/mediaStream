@@ -25,10 +25,60 @@ public:
         , m_engine(engine) 
     {}
 
-    // --- OPTIONS CORS endpoint ---
+    // --- OPTIONS CORS endpoint (covers /stream/* including /stream/{hash}/info) ---
     ENDPOINT_INFO(optionsStreamPrefix) { info->summary = "CORS Preflight"; }
     ENDPOINT("OPTIONS", "/api/v1/stream/*", optionsStreamPrefix) {
         return createResponse(Status::CODE_204, "");
+    }
+
+    // --- GET /api/v1/stream/{infoHash}/info ---
+    // Returns lightweight JSON metadata about the largest file in a torrent.
+    // Used by the frontend for proactive codec detection (HEVC filename patterns +
+    // MediaCapabilities.decodingInfo()) before playback starts, so users see the
+    // codec warning immediately rather than after audio starts on a black screen.
+    ENDPOINT_INFO(streamInfo) { info->summary = "Get file metadata for codec pre-check"; }
+    ENDPOINT("GET", "/api/v1/stream/{infoHash}/info", streamInfo,
+             PATH(String, infoHash))
+    {
+        std::string target_hash = infoHash->c_str();
+        std::transform(target_hash.begin(), target_hash.end(), target_hash.begin(),
+                       [](unsigned char c){ return std::tolower(c); });
+
+        auto file_path_opt = m_engine->getLargestFilePath(target_hash);
+        if (!file_path_opt) {
+            return createResponse(Status::CODE_404, "Metadata not yet available");
+        }
+
+        std::filesystem::path fsp(file_path_opt.value());
+        std::string filename = fsp.filename().string();
+
+        // Size may be 0 if still pre-allocated (sequential download hasn't written yet)
+        std::error_code ec;
+        uint64_t size_bytes = std::filesystem::file_size(fsp, ec);
+        if (ec) size_bytes = 0;
+
+        // Mirror the mime-type logic from streamVideo so front-end gets a consistent value
+        std::string mime = "video/mp4";
+        std::string ext  = fsp.extension().string();
+        if (ext == ".mkv")  mime = "video/x-matroska";
+        else if (ext == ".avi")  mime = "video/x-msvideo";
+        else if (ext == ".webm") mime = "video/webm";
+
+        // Minimal hand-rolled JSON — avoid pulling in nlohmann just for this tiny payload.
+        // Filename is escaped to handle quotes/backslashes in torrent-provided names.
+        std::string escaped_name;
+        for (char c : filename) {
+            if (c == '"' || c == '\\') escaped_name += '\\';
+            escaped_name += c;
+        }
+
+        std::string json = "{\"filename\":\"" + escaped_name
+                         + "\",\"size_bytes\":"  + std::to_string(size_bytes)
+                         + ",\"mime_type\":\""   + mime + "\"}";
+
+        auto response = createResponse(Status::CODE_200, json);
+        response->putHeader("Content-Type", "application/json");
+        return response;
     }
 
     ENDPOINT_INFO(streamVideo) {

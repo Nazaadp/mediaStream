@@ -22,6 +22,11 @@ namespace media::core {
         int download_rate; // bytes per second
         int num_peers;
         std::string state; // "Downloading", "Seeding", "Checking"
+        // File metadata populated once torrent info is available.
+        // Empty strings / 0 while in the "Fetching Metadata" phase.
+        std::string filename;  // Basename of the largest file e.g. "Movie.x265.mkv"
+        int64_t size_bytes{0}; // Pre-allocated file size from torrent metadata
+        std::string mime_type; // "video/x-matroska", "video/mp4", etc.
     };
 
     class TorrentEngine {

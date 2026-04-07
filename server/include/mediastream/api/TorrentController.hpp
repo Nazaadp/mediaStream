@@ -86,6 +86,9 @@ public:
             dto->progress = item.progress;
             dto->state = item.state;
             dto->download_rate = item.download_rate;
+            dto->filename  = item.filename.empty()  ? nullptr : oatpp::String(item.filename);
+            dto->size_bytes = item.size_bytes;
+            dto->mime_type = item.mime_type.empty() ? nullptr : oatpp::String(item.mime_type);
             response_list->push_back(dto);
         }
 

@@ -24,6 +24,11 @@ namespace media::api {
         DTO_FIELD(Float32, progress);
         DTO_FIELD(String, state);
         DTO_FIELD(Int32, download_rate);
+        // File metadata for proactive codec detection on the frontend.
+        // Populated once torrent metadata is available (may be null before that).
+        DTO_FIELD(String, filename);   // Largest file basename, e.g. "Movie.x265.mkv"
+        DTO_FIELD(Int64, size_bytes);  // Pre-allocated file size from torrent metadata
+        DTO_FIELD(String, mime_type);  // video/x-matroska, video/mp4, etc.
     };
 
     // Generic Response
