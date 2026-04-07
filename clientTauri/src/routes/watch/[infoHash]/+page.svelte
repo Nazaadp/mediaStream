@@ -15,6 +15,8 @@
     let isReadyToPlay = false; // True when backend has the file created
     let isBuffering = true; // True while waiting for video to load or buffering
     let error = null;
+    let noVideoHint = false; // True when audio plays but no video frames detected
+    let codecHintTimer = null; // Timer for the codec diagnostic check
 
     // Player State
     let currentTime = 0;
@@ -30,6 +32,7 @@
     let isDestroyed = false;
     let torrentProgress = 0;
     let torrentState = "Connecting to peers...";
+    let pollingInterval = null; // Fallback REST polling when WS is slow
 
     function connectWebSocket() {
         ws = new WebSocket(`${import.meta.env.VITE_WS_URL}/api/v1/ws/status`);
@@ -49,13 +52,16 @@
                     torrentProgress = myTorrent.progress;
                     torrentState = myTorrent.state;
 
-                    if (torrentProgress > 0.05 && !isReadyToPlay) {
+                    // 2% threshold: waitForPiece() on the backend already guarantees the
+                    // requested byte is downloaded before being served, so we can start early.
+                    if (torrentProgress > 0.02 && !isReadyToPlay) {
                         console.log(
                             "Torrent is ready! Initializing stream.",
                             "progress: ",
                             torrentProgress,
                         );
                         isReadyToPlay = true;
+                        stopPolling(); // WS delivered the update, polling is no longer needed
                     }
                 } else {
                     console.warn(
@@ -69,8 +75,10 @@
         };
 
         ws.onclose = () => {
-            if (!isDestroyed && !isReadyToPlay) {
-                console.log("WebSocket closed prematurely, reconnecting...");
+            // Always reconnect while the session is alive, regardless of isReadyToPlay.
+            // We need WS progress updates during playback too (e.g. buffer badge).
+            if (!isDestroyed) {
+                console.log("WebSocket closed, reconnecting...");
                 setTimeout(connectWebSocket, 2000);
             }
         };
@@ -89,8 +97,9 @@
             if (myTorrent) {
                 torrentProgress = myTorrent.progress;
                 torrentState = myTorrent.state;
-                if (torrentProgress > 0.05 && !isReadyToPlay) {
+                if (torrentProgress > 0.02 && !isReadyToPlay) {
                     isReadyToPlay = true;
+                    stopPolling();
                 }
             }
         } catch (e) {
@@ -98,10 +107,38 @@
         }
     }
 
+    /**
+     * Polling fallback: if the WebSocket is slow to deliver the first status update
+     * (e.g. during the Fetching Metadata phase where progress stays at 0 and the
+     * broadcaster may be delayed), we poll the REST endpoint every 2 seconds as a
+     * safety net. Polling is stopped as soon as isReadyToPlay becomes true.
+     */
+    function startPolling() {
+        if (pollingInterval) return;
+        pollingInterval = setInterval(async () => {
+            if (isReadyToPlay || isDestroyed) {
+                stopPolling();
+                return;
+            }
+            await fetchInitialStatus();
+        }, 2000);
+    }
+
+    function stopPolling() {
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+        }
+    }
+
     onMount(() => {
         console.log("Started Video Player component for hash:", infoHash);
         fetchInitialStatus();
         connectWebSocket();
+        // Start REST polling as a safety net. It will self-cancel once isReadyToPlay is true.
+        // This handles the race window where the WS connects but the torrent is still in
+        // the "Fetching Metadata" phase emitting identical JSON every second.
+        startPolling();
     });
 
     async function saveWatchHistory() {
@@ -195,8 +232,10 @@
 
     onDestroy(() => {
         isDestroyed = true;
+        stopPolling();
+        if (codecHintTimer) clearTimeout(codecHintTimer);
         if (ws) {
-            ws.onclose = null; // Prevent reconnect
+            ws.onclose = null; // Prevent reconnect on intentional teardown
             ws.close();
         }
         localStorage.setItem("mediaStream_history_dirty", "true");
@@ -215,6 +254,16 @@
 
     function handleVideoPlaying() {
         isBuffering = false;
+        // Codec diagnostic: if the video plays for 5 seconds but reports no video height
+        // (videoHeight === 0), the browser decoded audio but failed to render video frames.
+        // This is the signature of an unsupported codec (e.g. HEVC/H.265 without extensions).
+        if (codecHintTimer) clearTimeout(codecHintTimer);
+        codecHintTimer = setTimeout(() => {
+            if (videoElement && !isPaused && videoElement.videoHeight === 0 && currentTime > 0) {
+                console.warn("Codec diagnostic: audio playing but videoHeight=0. Likely missing HEVC/codec.");
+                noVideoHint = true;
+            }
+        }, 5000);
     }
 
     function handleVideoPause() {
@@ -459,6 +508,9 @@
                     ? `Establishing connection... (${torrentState})`
                     : "Buffering media stream..."}
             </p>
+            {#if !isReadyToPlay && torrentProgress > 0}
+                <p class="buffer-percent">{(torrentProgress * 100).toFixed(1)}% downloaded</p>
+            {/if}
         </div>
     {/if}
 
@@ -466,6 +518,23 @@
         <div class="overlay error-overlay">
             <div class="spinner"></div>
             <p>{error}</p>
+        </div>
+    {/if}
+
+    <!-- Codec Diagnostic Hint -->
+    {#if noVideoHint}
+        <div class="codec-hint" role="alert">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 width="20" height="20" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <div class="codec-hint-text">
+                <strong>No video signal detected</strong>
+                <span>Your system may be missing <strong>HEVC Video Extensions</strong>.
+                Install them from the Microsoft Store, or choose an H.264 (AVC) torrent instead.</span>
+            </div>
+            <button class="codec-hint-close" on:click={() => (noVideoHint = false)}>✕</button>
         </div>
     {/if}
 </div>
@@ -696,5 +765,77 @@
 
     .config-btn:hover {
         background: rgba(255, 255, 255, 0.2);
+    }
+
+    .buffer-percent {
+        font-size: 0.85rem;
+        color: rgba(255, 255, 255, 0.6);
+        margin-top: 6px;
+        letter-spacing: 0.5px;
+    }
+
+    /* --- Codec Diagnostic Toast --- */
+    .codec-hint {
+        position: absolute;
+        bottom: 90px; /* above the player controls */
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        background: rgba(20, 20, 20, 0.92);
+        border: 1px solid rgba(229, 9, 20, 0.5);
+        border-radius: var(--border-radius-md);
+        padding: 14px 18px;
+        max-width: 520px;
+        width: 90%;
+        z-index: 2020;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+        animation: slideUp 0.3s ease;
+        color: white;
+    }
+
+    @keyframes slideUp {
+        from { opacity: 0; transform: translateX(-50%) translateY(16px); }
+        to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+
+    .codec-hint svg {
+        flex-shrink: 0;
+        color: var(--accent-color);
+        margin-top: 2px;
+    }
+
+    .codec-hint-text {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 0.88rem;
+        line-height: 1.5;
+    }
+
+    .codec-hint-text strong {
+        font-size: 0.95rem;
+    }
+
+    .codec-hint-text span {
+        color: rgba(255, 255, 255, 0.75);
+    }
+
+    .codec-hint-close {
+        margin-left: auto;
+        background: transparent;
+        border: none;
+        color: rgba(255, 255, 255, 0.5);
+        cursor: pointer;
+        font-size: 1rem;
+        flex-shrink: 0;
+        padding: 0 4px;
+        transition: color var(--transition-fast);
+    }
+
+    .codec-hint-close:hover {
+        color: white;
     }
 </style>
