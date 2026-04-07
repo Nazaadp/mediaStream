@@ -26,3 +26,4 @@ fix_database.py
 /clientTauri/dist
 
 *.png
+CONTEXT.md

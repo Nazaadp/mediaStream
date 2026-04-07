@@ -254,16 +254,32 @@
 
     function handleVideoPlaying() {
         isBuffering = false;
-        // Codec diagnostic: if the video plays for 5 seconds but reports no video height
-        // (videoHeight === 0), the browser decoded audio but failed to render video frames.
-        // This is the signature of an unsupported codec (e.g. HEVC/H.265 without extensions).
+        // codecHintTimer is only used as a last-resort fallback (see handleVideoMetadata).
+        // Clearing it here prevents a stale timer from a previous src assignment firing.
         if (codecHintTimer) clearTimeout(codecHintTimer);
-        codecHintTimer = setTimeout(() => {
-            if (videoElement && !isPaused && videoElement.videoHeight === 0 && currentTime > 0) {
-                console.warn("Codec diagnostic: audio playing but videoHeight=0. Likely missing HEVC/codec.");
-                noVideoHint = true;
-            }
-        }, 5000);
+    }
+
+    /**
+     * Codec diagnostic — runs on the `loadedmetadata` event, which fires once the browser
+     * has successfully parsed the container header (moov atom for MP4, EBML header for MKV).
+     * At this point videoHeight is reliably 0 ONLY if the browser genuinely cannot decode
+     * the video track — not because the data hasn't arrived yet.
+     *
+     * Do NOT use a setTimeout for this: at low download percentages (2%) the moov atom may
+     * not be available yet, so videoHeight is legitimately 0 for timing reasons, not codec
+     * reasons. loadedmetadata is the correct signal.
+     */
+    function handleVideoMetadata() {
+        if (videoElement && videoElement.videoHeight === 0 && videoElement.videoWidth === 0) {
+            console.warn(
+                "Codec diagnostic [loadedmetadata]: videoHeight=0 after metadata parsed.",
+                "Browser likely cannot decode this video codec (e.g. HEVC without extensions)."
+            );
+            noVideoHint = true;
+        } else {
+            // Metadata loaded successfully with valid dimensions — clear any stale hint
+            noVideoHint = false;
+        }
     }
 
     function handleVideoPause() {
@@ -362,6 +378,7 @@
         crossorigin="anonymous"
         on:waiting={handleVideoWaiting}
         on:playing={handleVideoPlaying}
+        on:loadedmetadata={handleVideoMetadata}
         on:click={togglePlay}
         on:error={handleVideoError}
         class="media-video"
