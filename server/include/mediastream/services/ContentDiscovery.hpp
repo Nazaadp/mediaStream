@@ -122,8 +122,8 @@ namespace media::services {
         CinemetaClient();
         ~CinemetaClient() override;
 
-        std::vector<DiscoveredContent> fetchPopular(int limit = 20, int page = 1) override;
-        std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1) override;
+        std::vector<DiscoveredContent> fetchPopular(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") override;
+        std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") override;
         std::optional<DiscoveredContent> getById(const std::string& id) override;
 
         std::vector<DiscoveredContent> fetchSeries(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "");

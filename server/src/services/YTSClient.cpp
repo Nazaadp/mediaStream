@@ -139,7 +139,7 @@ namespace media::services {
     }
 
     // Fetch Popular Movies
-    std::vector<DiscoveredContent> YTSClient::fetchPopular(int limit, int /*page*/, const std::string& genre, const std::string& language) {
+    std::vector<DiscoveredContent> YTSClient::fetchPopular(int limit, int /*page*/, [[maybe_unused]] const std::string& genre, [[maybe_unused]] const std::string& language) {
         std::string url = m_impl->BASE_URL + "/list_movies.json?limit=" + std::to_string(limit) 
                          + "&sort_by=download_count&order_by=desc";
         
@@ -155,7 +155,7 @@ namespace media::services {
     }
 
     // Search Movies
-    std::vector<DiscoveredContent> YTSClient::search(const std::string& query, int limit, int /*page*/, const std::string& genre, const std::string& language) {
+    std::vector<DiscoveredContent> YTSClient::search(const std::string& query, int limit, int /*page*/, [[maybe_unused]] const std::string& genre, [[maybe_unused]] const std::string& language) {
         std::string encoded_query = query; // TODO: URL encode
         std::string url = m_impl->BASE_URL + "/list_movies.json?query_term=" + encoded_query 
                          + "&limit=" + std::to_string(limit);
