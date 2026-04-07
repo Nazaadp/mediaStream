@@ -167,7 +167,7 @@ namespace media::services {
         return m_impl->parseResults(tmdbCatHttpGet(url, m_impl->m_api_key), "TMDB");
     }
 
-    std::vector<DiscoveredContent> TMDBCatalogClient::search(const std::string& query, int /*limit*/, int page, const std::string& genre, const std::string& language) {
+    std::vector<DiscoveredContent> TMDBCatalogClient::search(const std::string& query, int /*limit*/, int page, [[maybe_unused]] const std::string& genre, [[maybe_unused]] const std::string& language) {
         if (m_impl->m_api_key.empty()) return {};
         
         CURL* curl = curl_easy_init();
