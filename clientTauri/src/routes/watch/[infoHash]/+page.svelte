@@ -10,6 +10,10 @@
     // from WS reconnects), which tells the browser to reload the video from byte 0,
     // discarding the current playback position and HTTP connection.
     let videoSrc = null;
+    let streamRetryCount = 0;    // Counts 503-type retries so we don't loop forever
+    // 20 retries × 2s = 40s total — enough for the moov atom 4s backend wait to succeed
+    // across multiple attempts (moov atom download typically takes 2-8s with good peers)
+    const MAX_STREAM_RETRIES = 20;
 
     let videoElement;
 
@@ -17,7 +21,7 @@
     let isReadyToPlay = false; // True when backend has the file created
     let isBuffering = true; // True while waiting for video to load or buffering
     let error = null;
-    let noVideoHint = false; // True when audio plays but no video frames detected
+    let noVideoHint = null; // null = no hint; 'codec' = HEVC missing; 'moov' = atom not ready
     let codecHintTimer = null; // Timer for the codec diagnostic check
 
     // Player State
@@ -58,12 +62,13 @@
                     // available before the browser tries to parse video metadata.
                     // At 2%, libtorrent pre-allocated zeros may be served instead of
                     // the real header, causing videoHeight=0 on loadedmetadata.
-                    // Guard: never start playback during metadata-download phase.
-                    // During 'Fetching Metadata', libtorrent hasn't downloaded any pieces
-                    // yet — ts.progress may read stale/zero values and no file bytes exist.
-                    const isMetadataPhase = myTorrent.state === "Fetching Metadata";
+                    // Block on Fetching Metadata AND Checking:
+                    // - 'Fetching Metadata': no pieces exist yet (magnet DHT resolution)
+                    // - 'Checking': libtorrent is rehashing pieces after resume; have_piece()
+                    //   returns false during this phase even if data is on disk → 503 from backend
+                    const blockedState = myTorrent.state === "Fetching Metadata" || myTorrent.state === "Checking";
 
-                    if (torrentProgress > 0.05 && !isReadyToPlay && !isMetadataPhase) {
+                    if (torrentProgress > 0.05 && !isReadyToPlay && !blockedState) {
                         console.log(
                             "Torrent is ready! Initializing stream.",
                             "progress: ",
@@ -109,9 +114,9 @@
             if (myTorrent) {
                 torrentProgress = myTorrent.progress;
                 torrentState = myTorrent.state;
-                // Same guards as WS handler — require actual download phase, not metadata.
-                const isMetadataPhase = myTorrent.state === "Fetching Metadata";
-                if (torrentProgress > 0.05 && !isReadyToPlay && !isMetadataPhase) {
+                // Same guards as WS handler.
+                const blockedState = myTorrent.state === "Fetching Metadata" || myTorrent.state === "Checking";
+                if (torrentProgress > 0.05 && !isReadyToPlay && !blockedState) {
                     isReadyToPlay = true;
                     videoSrc = `${import.meta.env.VITE_API_URL}/api/v1/stream/${infoHash}`;
                     stopPolling();
@@ -288,12 +293,16 @@
         if (videoElement && videoElement.videoHeight === 0 && videoElement.videoWidth === 0) {
             console.warn(
                 "Codec diagnostic [loadedmetadata]: videoHeight=0 after metadata parsed.",
-                "Browser likely cannot decode this video codec (e.g. HEVC without extensions)."
+                "Could be HEVC without extensions, or moov atom not yet available."
             );
-            noVideoHint = true;
+            // 'moov' is the most common cause at early download percentages:
+            // the motion video headers are at the end of the file and not yet fetched.
+            // 'codec' (HEVC) is much rarer and only shows as permanent after many retries.
+            // Default to 'moov' here — handleVideoError will upgrade to 'codec' if needed.
+            if (!noVideoHint) noVideoHint = 'moov';
         } else {
-            // Metadata loaded successfully with valid dimensions — clear any stale hint
-            noVideoHint = false;
+            // Metadata loaded with valid dimensions — clear any stale hint
+            noVideoHint = null;
         }
     }
 
@@ -330,17 +339,44 @@
     }
 
     function handleVideoError(e) {
-        console.error("Video Error:", e);
-        // HTML5 video errors often happen if the browser tries to read the stream
-        // before enough of the moov atom / header is downloaded.
+        const code = videoElement?.error?.code;
+        // MediaError codes:
+        //   1 = MEDIA_ERR_ABORTED   (user aborted)
+        //   2 = MEDIA_ERR_NETWORK   (network error mid-stream)
+        //   3 = MEDIA_ERR_DECODE    (decode/codec error)
+        //   4 = MEDIA_ERR_SRC_NOT_SUPPORTED (503/404 from server, or unsupported codec)
+        //
+        // Code 4 here almost always means the backend returned 503 (piece not yet ready).
+        // The browser treats 503 as "no supported source" rather than a transient error.
+        // We implement the retry logic the browser refuses to do itself.
+        const isTransient = code === 4 && streamRetryCount < MAX_STREAM_RETRIES;
 
-        // Try to recover by reloading a bit later
-        setTimeout(() => {
-            if (videoElement && isReadyToPlay) {
-                videoElement.load();
-                videoElement.play().catch(() => {});
+        if (isTransient) {
+            streamRetryCount++;
+            console.warn(
+                `Stream 503 — piece not ready. Retry ${streamRetryCount}/${MAX_STREAM_RETRIES} in 2s...`
+            );
+            setTimeout(() => {
+                if (videoElement && isReadyToPlay && !isDestroyed) {
+                    // Re-assign the same URL to force the browser to retry the HTTP request.
+                    // videoElement.load() alone doesn't work after MEDIA_ERR_SRC_NOT_SUPPORTED.
+                    videoElement.src = videoSrc;
+                    videoElement.load();
+                    videoElement.play().catch(() => {});
+                }
+            }, 2000);
+        } else {
+            // Permanent failure: exhausted retries (moov atom) or codec error
+            console.error("Video Error (permanent):", code, e);
+            if (code === 3) {
+                // Decode error = codec not supported by this WebView
+                noVideoHint = 'codec';
+            } else {
+                // Exhausted retries for moov atom — let the user know video will
+                // appear once the torrent downloads further
+                noVideoHint = 'moov';
             }
-        }, 3000);
+        }
     }
 </script>
 
@@ -553,7 +589,7 @@
         </div>
     {/if}
 
-    <!-- Codec Diagnostic Hint -->
+    <!-- Codec / Moov Atom Diagnostic Hint -->
     {#if noVideoHint}
         <div class="codec-hint" role="alert">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -562,11 +598,17 @@
                 <line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
             <div class="codec-hint-text">
-                <strong>No video signal detected</strong>
-                <span>Your system may be missing <strong>HEVC Video Extensions</strong>.
-                Install them from the Microsoft Store, or choose an H.264 (AVC) torrent instead.</span>
+                {#if noVideoHint === 'codec'}
+                    <strong>Video codec not supported</strong>
+                    <span>Your system may be missing <strong>HEVC Video Extensions</strong>.
+                    Install them from the Microsoft Store, or choose an H.264 (AVC) torrent instead.</span>
+                {:else}
+                    <strong>Video track loading…</strong>
+                    <span>The video header (moov atom) is still downloading. Audio plays first.
+                    Video will appear automatically once the end of the file is fetched — usually within 30s.</span>
+                {/if}
             </div>
-            <button class="codec-hint-close" on:click={() => (noVideoHint = false)}>✕</button>
+            <button class="codec-hint-close" on:click={() => (noVideoHint = null)}>✕</button>
         </div>
     {/if}
 </div>

@@ -208,24 +208,53 @@ namespace media::core {
                     // If piece index is beyond total pieces, return
                     if (piece_idx >= lt::piece_index_t(h.torrent_file()->num_pieces())) return false;
 
-                    // If the piece is already downloaded, return immediately
+                    // Fast path: if already downloaded, return immediately
                     if (h.have_piece(piece_idx)) return true;
 
-                    // Prioritize piece and a few subsequent pieces for smooth streaming
-                    h.set_piece_deadline(piece_idx, 0, lt::torrent_handle::alert_when_available);
-                    h.piece_priority(piece_idx, lt::top_priority);
-                    
-                    // Also boost priority of next few pieces
-                    for (int i = 1; i <= 3; ++i) {
-                        lt::piece_index_t next_p(static_cast<int>(piece_idx) + i);
-                        if (next_p < lt::piece_index_t(h.torrent_file()->num_pieces())) {
-                            h.piece_priority(next_p, lt::top_priority);
-                            h.set_piece_deadline(next_p, i * 1000);
+                    // --- MOOV ATOM DETECTION ---
+                    // The browser seeks to the end of the file to find the MP4 moov atom
+                    // (or MKV segment index). This seek lands on a piece far beyond the
+                    // current sequential download position. We detect this by checking
+                    // if the requested piece is in the last 15% of the torrent.
+                    // When detected: boost ALL remaining end pieces (not just the target)
+                    // so libtorrent delivers the full metadata block, not just one piece.
+                    // Also extend the wait window to 4000ms to give libtorrent time to
+                    // fulfill the out-of-order request from a peer connection.
+                    const int total_pieces = h.torrent_file()->num_pieces();
+                    const int piece_idx_int = static_cast<int>(piece_idx);
+                    const bool is_moov_seek = piece_idx_int > (total_pieces * 85 / 100);
+
+                    if (is_moov_seek) {
+                        // Prioritize every piece from piece_idx to end-of-file.
+                        // This ensures the full moov atom is available, not just one slice.
+                        spdlog::info(
+                            "Moov atom seek detected: boosting priority for pieces {}-{}",
+                            piece_idx_int, total_pieces - 1
+                        );
+                        for (int i = piece_idx_int; i < total_pieces; ++i) {
+                            h.piece_priority(lt::piece_index_t(i), lt::top_priority);
+                            // Stagger deadlines so libtorrent gets them in order
+                            h.set_piece_deadline(lt::piece_index_t(i),
+                                                 (i - piece_idx_int) * 200);
+                        }
+                    } else {
+                        // Normal sequential piece: prioritize this piece + next 3
+                        h.set_piece_deadline(piece_idx, 0, lt::torrent_handle::alert_when_available);
+                        h.piece_priority(piece_idx, lt::top_priority);
+                        for (int i = 1; i <= 3; ++i) {
+                            lt::piece_index_t next_p(piece_idx_int + i);
+                            if (next_p < lt::piece_index_t(total_pieces)) {
+                                h.piece_priority(next_p, lt::top_priority);
+                                h.set_piece_deadline(next_p, i * 1000);
+                            }
                         }
                     }
 
-                    // Block and wait for the piece (max 500ms to prevent HTTP thread starvation)
-                    int max_wait_ms = 500;
+                    // Wait longer for moov seeks — they require an out-of-order download
+                    // from a peer connection that's currently serving sequential pieces.
+                    // 4000ms gives libtorrent enough time to pivot to the new priority.
+                    // Normal sequential pieces are available nearly instantly (500ms).
+                    const int max_wait_ms = is_moov_seek ? 4000 : 500;
                     int waited = 0;
                     while (!h.have_piece(piece_idx) && waited < max_wait_ms) {
                         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -233,8 +262,11 @@ namespace media::core {
                     }
 
                     if (!h.have_piece(piece_idx)) {
-                        spdlog::warn("Timeout waiting for piece {} to download.", static_cast<int>(piece_idx));
-                        return false; // Caller must NOT serve zeros
+                        spdlog::warn(
+                            "Timeout waiting for piece {} to download (moov_seek={}).",
+                            piece_idx_int, is_moov_seek
+                        );
+                        return false;
                     }
                     return true;
                 }
