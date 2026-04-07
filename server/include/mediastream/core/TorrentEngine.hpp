@@ -54,9 +54,14 @@ namespace media::core {
     private:
         libtorrent::session m_session;
         std::filesystem::path m_download_dir;
-        // Tracks torrents whose end-pieces have already been priority-boosted.
-        // Prevents re-running the boost loop on every broadcaster tick.
+        // Tracks torrents whose end-pieces have already been priority-boosted
+        // with deadlines by proactivelyBoostEndPieces(). One-shot per torrent.
         std::set<std::string> m_moov_boosted;
+        // Tracks (hash:piece_index) pairs for which deadlines have already been
+        // submitted via waitForPiece(). Prevents re-setting deadlines on every
+        // 503 retry from the frontend, which resets libtorrent's countdown and
+        // can actively slow down out-of-order piece delivery.
+        std::set<std::string> m_moov_deadline_set;
     };
 
 } // namespace media::core

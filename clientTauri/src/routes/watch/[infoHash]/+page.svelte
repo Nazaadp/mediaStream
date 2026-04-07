@@ -11,9 +11,10 @@
     // discarding the current playback position and HTTP connection.
     let videoSrc = null;
     let streamRetryCount = 0;    // Counts 503-type retries so we don't loop forever
-    // 20 retries × 2s = 40s total — enough for the moov atom 4s backend wait to succeed
-    // across multiple attempts (moov atom download typically takes 2-8s with good peers)
-    const MAX_STREAM_RETRIES = 20;
+    // 10 retries × 2s frontend gap + 15s backend wait per attempt = ~170s total safety net.
+    // The backend now waits 15s before returning 503, so the moov atom typically arrives
+    // within 1-3 retries even on slow peers. 10 is a generous upper bound.
+    const MAX_STREAM_RETRIES = 10;
 
     let videoElement;
 
