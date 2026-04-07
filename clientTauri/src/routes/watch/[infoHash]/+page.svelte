@@ -52,9 +52,11 @@
                     torrentProgress = myTorrent.progress;
                     torrentState = myTorrent.state;
 
-                    // 2% threshold: waitForPiece() on the backend already guarantees the
-                    // requested byte is downloaded before being served, so we can start early.
-                    if (torrentProgress > 0.02 && !isReadyToPlay) {
+                    // 5% threshold: enough for the MKV/MP4 header (moov atom) to be
+                    // available before the browser tries to parse video metadata.
+                    // At 2%, libtorrent pre-allocated zeros may be served instead of
+                    // the real header, causing videoHeight=0 on loadedmetadata.
+                    if (torrentProgress > 0.05 && !isReadyToPlay) {
                         console.log(
                             "Torrent is ready! Initializing stream.",
                             "progress: ",
