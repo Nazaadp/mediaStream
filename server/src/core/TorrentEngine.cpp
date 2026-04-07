@@ -154,9 +154,10 @@ namespace media::core {
             const int boost_from = total_pieces * 95 / 100;
             for (int i = boost_from; i < total_pieces; ++i) {
                 h.piece_priority(lt::piece_index_t(i), lt::top_priority);
-                // Stagger deadlines: first piece = 0ms, next = 500ms, etc.
-                // This tells libtorrent: «fetch these pieces out-of-order, urgently».
-                h.set_piece_deadline(lt::piece_index_t(i), (i - boost_from) * 500);
+                // Stagger deadlines: first piece = 0ms, next = 100ms, etc.
+                // Reduced from 500ms to 100ms to fetch moov pieces 5x faster.
+                // For 60 pieces (5% of 1200), this is 6 seconds total vs 30 seconds.
+                h.set_piece_deadline(lt::piece_index_t(i), (i - boost_from) * 100);
             }
             spdlog::info(
                 "Proactive moov boost: pieces {}-{} queued (with deadlines) for hash {}",
@@ -274,8 +275,9 @@ namespace media::core {
                                 h.piece_priority(lt::piece_index_t(i), lt::top_priority);
                                 // Stagger deadlines so libtorrent fetches in sequential order
                                 // starting immediately (0ms for the first critical piece).
+                                // Reduced from 200ms to 100ms to match proactive boost timing.
                                 h.set_piece_deadline(lt::piece_index_t(i),
-                                                     (i - piece_idx_int) * 200);
+                                                     (i - piece_idx_int) * 100);
                             }
                             m_moov_deadline_set.insert(moov_key);
                         } else {
@@ -297,13 +299,14 @@ namespace media::core {
                         }
                     }
 
-                    // Moov seeks require 15s: the proactive boost sets deadlines but
-                    // libtorrent still needs to negotiate an out-of-order request with a
-                    // peer and receive the piece data. In testing, delivery took up to
-                    // 56s total (14 × 4s retries) — 15s per attempt with frontend retries
-                    // covers this without holding the oatpp thread pool hostage too long.
+                    // Moov seeks require 30s: the proactive boost sets deadlines staggered
+                    // at 100ms intervals for ~60 pieces (5% of torrent) = 6 seconds of
+                    // staggered requests. However, libtorrent still needs to negotiate
+                    // out-of-order requests with peers and receive the data. In practice,
+                    // with slow peers or high latency, this can take 20-30 seconds.
+                    // Increased from 15s to 30s to reduce 503 retries on the frontend.
                     // Normal sequential pieces arrive in <500ms (already buffered).
-                    const int max_wait_ms = is_moov_seek ? 15000 : 500;
+                    const int max_wait_ms = is_moov_seek ? 30000 : 500;
                     int waited = 0;
                     while (!h.have_piece(piece_idx) && waited < max_wait_ms) {
                         std::this_thread::sleep_for(std::chrono::milliseconds(100));
