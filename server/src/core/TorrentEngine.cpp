@@ -115,16 +115,52 @@ namespace media::core {
         for (auto& h : handles) {
             if (!h.is_valid()) continue;
             
-            // Use our helper to get the hash string
-            std::string current_hash = to_hex_string(h.info_hash()); 
+            std::string current_hash = to_hex_string(h.info_hash());
             
             if (current_hash == info_hash_str) {
                 m_session.remove_torrent(h);
+                m_moov_boosted.erase(info_hash_str); // Allow re-add to re-boost
                 spdlog::info("Torrent removed: {}", info_hash_str);
                 return;
             }
         }
         throw std::runtime_error("Torrent not found");
+    }
+
+    // --- PROACTIVE MOOV ATOM BOOST ---
+    // Called every second by the WS broadcaster alongside getSessionStatus().
+    // As soon as a torrent has metadata and enters Downloading state, we boost
+    // the last 5% of pieces to top priority. These are the pieces most likely to
+    // contain the moov atom (MP4) or seek table (MKV). By doing this proactively,
+    // the end-of-file pieces are fetched in the background BEFORE the user clicks
+    // Stream — eliminating the 4-second on-demand wait that previously caused
+    // Timeout waiting for piece N errors.
+    void TorrentEngine::proactivelyBoostEndPieces() {
+        auto handles = m_session.get_torrents();
+        for (const auto& h : handles) {
+            if (!h.is_valid()) continue;
+            if (!h.torrent_file()) continue; // Metadata not yet available
+
+            auto ts = h.status();
+            if (ts.state != lt::torrent_status::downloading) continue;
+
+            std::string hash = to_hex_string(h.info_hash());
+            if (m_moov_boosted.count(hash)) continue; // Already boosted
+
+            const int total_pieces = h.torrent_file()->num_pieces();
+            // Boost the last 5% of pieces. For a 2GB torrent with 512KB pieces
+            // (~4000 pieces), this is the last 200 pieces = 100MB — large enough
+            // to cover any moov atom or MKV cue table.
+            const int boost_from = total_pieces * 95 / 100;
+            for (int i = boost_from; i < total_pieces; ++i) {
+                h.piece_priority(lt::piece_index_t(i), lt::top_priority);
+            }
+            spdlog::info(
+                "Proactive moov boost: pieces {}-{} queued for hash {}",
+                boost_from, total_pieces - 1, hash
+            );
+            m_moov_boosted.insert(hash);
+        }
     }
 
     // --- GET STATUS ---

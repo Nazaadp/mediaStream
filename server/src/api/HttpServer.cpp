@@ -147,6 +147,11 @@ namespace media::api {
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             try {
                 if (m_ws_controller) {
+                    // Proactively queue end-of-file pieces (moov atom) for all
+                    // active torrents. Runs every second so by the time the user
+                    // clicks Stream the moov atom is already downloaded.
+                    m_engine->proactivelyBoostEndPieces();
+
                     auto engine_status = m_engine->getSessionStatus();
                     if (engine_status.empty()) {
                         if (last_json != "[]") {

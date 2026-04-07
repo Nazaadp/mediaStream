@@ -291,20 +291,27 @@
      */
     function handleVideoMetadata() {
         if (videoElement && videoElement.videoHeight === 0 && videoElement.videoWidth === 0) {
-            console.warn(
-                "Codec diagnostic [loadedmetadata]: videoHeight=0 after metadata parsed.",
-                "Could be HEVC without extensions, or moov atom not yet available."
-            );
-            // 'moov' is the most common cause at early download percentages:
-            // the motion video headers are at the end of the file and not yet fetched.
-            // 'codec' (HEVC) is much rarer and only shows as permanent after many retries.
-            // Default to 'moov' here — handleVideoError will upgrade to 'codec' if needed.
-            if (!noVideoHint) noVideoHint = 'moov';
+            // Discriminate between two causes of videoHeight=0:
+            // 1. streamRetryCount===0 → moov served cleanly, codec can't decode → 'codec' (HEVC)
+            // 2. streamRetryCount>0   → 503s occurred, moov may still be loading → 'moov'
+            if (streamRetryCount === 0) {
+                console.warn(
+                    "Codec diagnostic: videoHeight=0 with no stream errors.",
+                    "Moov atom served cleanly — video codec cannot be decoded (likely H.265/HEVC)."
+                );
+                noVideoHint = 'codec';
+            } else {
+                console.warn(
+                    "Codec diagnostic: videoHeight=0 after", streamRetryCount,
+                    "stream retries. Moov atom may still be loading."
+                );
+                if (!noVideoHint) noVideoHint = 'moov';
+            }
         } else {
-            // Metadata loaded with valid dimensions — clear any stale hint
             noVideoHint = null;
         }
     }
+
 
     function handleVideoPause() {
         // Handled by bind:paused

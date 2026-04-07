@@ -11,6 +11,7 @@
 #include <vector>
 #include <filesystem>
 #include <optional>
+#include <set>
 
 namespace media::core {
 
@@ -45,10 +46,17 @@ namespace media::core {
         // Callers MUST check the return value and NOT serve data on false (zeros in pre-alloc).
         [[nodiscard]] bool waitForPiece(const std::string& info_hash, uint64_t file_offset);
 
+        // Called every second by the WS broadcaster.
+        // Pre-fetches the last 5% of pieces (moov atom location) for every actively
+        // downloading torrent so the moov is ready well before the user clicks Stream.
+        void proactivelyBoostEndPieces();
+
     private:
-        // --- 2. DIRECT IMPLEMENTATION (Matches your .cpp) ---
-        libtorrent::session m_session; 
-        std::filesystem::path m_download_dir; // Renamed to match your .cpp
+        libtorrent::session m_session;
+        std::filesystem::path m_download_dir;
+        // Tracks torrents whose end-pieces have already been priority-boosted.
+        // Prevents re-running the boost loop on every broadcaster tick.
+        std::set<std::string> m_moov_boosted;
     };
 
 } // namespace media::core
