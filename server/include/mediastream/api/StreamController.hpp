@@ -143,7 +143,7 @@ public:
         
         // Determine mime type from extension
         std::string mime = "video/mp4";
-        if (fp.ends_with(".mkv")) mime = "video/x-matroska";
+        if (fp.ends_with(".mkv")) mime = "video/webm";
         else if (fp.ends_with(".avi")) mime = "video/x-msvideo";
         else if (fp.ends_with(".webm")) mime = "video/webm";
         response->putHeader("Content-Type", mime); 

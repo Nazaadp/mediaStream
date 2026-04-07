@@ -168,10 +168,11 @@ namespace media::api {
                     }
                     
                     auto json = objectMapper->writeToString(response_list);
-                    if (json != last_json) {
-                        last_json = json;
-                        m_ws_controller->broadcastStatus(json);
-                    }
+                    // Always broadcast when torrents are active (do NOT dedup by JSON equality).
+                    // If we only broadcast on change, the "Fetching Metadata" phase (progress=0 for many
+                    // seconds) never triggers a send, leaving the frontend stuck on the loading overlay.
+                    last_json = json;
+                    m_ws_controller->broadcastStatus(json);
                 }
             } catch (const std::exception& e) {
                 spdlog::error("WebSocket Broadcaster Error: {}", e.what());
