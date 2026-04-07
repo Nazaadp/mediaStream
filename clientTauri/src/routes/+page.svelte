@@ -3,6 +3,7 @@
     import { goto } from "$app/navigation";
     import PosterCard from "../lib/PosterCard.svelte";
     import MediaCard from "../lib/MediaCard.svelte";
+    import FilterBar from "../lib/FilterBar.svelte";
 
     let history = [];
     let watchLater = [];
@@ -30,6 +31,15 @@
     let searchSeries = [];
     let searchAnime = [];
 
+    // Filter states
+    let selectedGenres = []; // Array of genre IDs
+    let selectedLanguage = ""; // Language code
+    let isFilterVisible = false;
+
+    // Keyboard navigation state
+    let focusedIndex = -1;
+    $: allSearchResults = [...searchMovies, ...searchSeries, ...searchAnime];
+
     // Svelte Action for Intersection Observer (Infinite Scroll)
     function infiniteScroll(node, callback) {
         const observer = new IntersectionObserver((entries) => {
@@ -47,7 +57,11 @@
         isLoadingMovies = true;
         moviePage++;
         try {
-            const r = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/discover/movies?page=${moviePage}`);
+            let url = `${import.meta.env.VITE_API_URL}/api/v1/discover/movies?page=${moviePage}`;
+            if (selectedGenres.length > 0) url += `&genre=${selectedGenres.join(",")}`;
+            if (selectedLanguage) url += `&language=${selectedLanguage}`;
+            
+            const r = await fetch(url);
             if (r.ok) movies = [...movies, ...await r.json()];
         } catch(e) { console.error(e); }
         isLoadingMovies = false;
@@ -58,7 +72,11 @@
         isLoadingSeries = true;
         seriesPage++;
         try {
-            const r = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/discover/series?page=${seriesPage}`);
+            let url = `${import.meta.env.VITE_API_URL}/api/v1/discover/series?page=${seriesPage}`;
+            if (selectedGenres.length > 0) url += `&genre=${selectedGenres.join(",")}`;
+            if (selectedLanguage) url += `&language=${selectedLanguage}`;
+            
+            const r = await fetch(url);
             if (r.ok) series = [...series, ...await r.json()];
         } catch(e) { console.error(e); }
         isLoadingSeries = false;
@@ -69,7 +87,11 @@
         isLoadingAnime = true;
         animePage++;
         try {
-            const r = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/discover/anime?page=${animePage}`);
+            let url = `${import.meta.env.VITE_API_URL}/api/v1/discover/anime?page=${animePage}`;
+            if (selectedGenres.length > 0) url += `&genre=${selectedGenres.join(",")}`;
+            if (selectedLanguage) url += `&language=${selectedLanguage}`;
+            
+            const r = await fetch(url);
             if (r.ok) anime = [...anime, ...await r.json()];
         } catch(e) { console.error(e); }
         isLoadingAnime = false;
@@ -87,23 +109,30 @@
         anime = [];
 
         try {
+            let movieUrl = `${import.meta.env.VITE_API_URL}/api/v1/discover/movies?page=1`;
+            let seriesUrl = `${import.meta.env.VITE_API_URL}/api/v1/discover/series?page=1`;
+            let animeUrl = `${import.meta.env.VITE_API_URL}/api/v1/discover/anime?page=1`;
+
+            if (selectedGenres.length > 0) {
+                const genreStr = `&genre=${selectedGenres.join(",")}`;
+                movieUrl += genreStr;
+                seriesUrl += genreStr;
+                animeUrl += genreStr;
+            }
+            if (selectedLanguage) {
+                const langStr = `&language=${selectedLanguage}`;
+                movieUrl += langStr;
+                seriesUrl += langStr;
+                animeUrl += langStr;
+            }
+
             const [histRes, vlRes, moviesRes, seriesRes, animeRes] =
                 await Promise.all([
-                    fetch(
-                        `${import.meta.env.VITE_API_URL}/api/v1/user/history`,
-                    ),
-                    fetch(
-                        `${import.meta.env.VITE_API_URL}/api/v1/user/viewlater`,
-                    ),
-                    fetch(
-                        `${import.meta.env.VITE_API_URL}/api/v1/discover/movies?page=1`,
-                    ),
-                    fetch(
-                        `${import.meta.env.VITE_API_URL}/api/v1/discover/series?page=1`,
-                    ),
-                    fetch(
-                        `${import.meta.env.VITE_API_URL}/api/v1/discover/anime?page=1`,
-                    ),
+                    fetch(`${import.meta.env.VITE_API_URL}/api/v1/user/history`),
+                    fetch(`${import.meta.env.VITE_API_URL}/api/v1/user/viewlater`),
+                    fetch(movieUrl),
+                    fetch(seriesUrl),
+                    fetch(animeUrl),
                 ]);
 
             if (histRes.ok) history = await histRes.json();
@@ -144,22 +173,38 @@
             if (vlCache) watchLater = JSON.parse(vlCache);
         } catch (e) {}
 
-        // Try to load discovery from cache first
-        const cachedStr = localStorage.getItem("mediaStreamCache");
-        if (cachedStr) {
-            try {
-                const cacheData = JSON.parse(cachedStr);
-                movies = cacheData.movies || [];
-                series = cacheData.series || [];
-                anime = cacheData.anime || [];
-                return; // Use cached data
-            } catch (e) {
-                console.warn("Failed to parse cache", e);
+        // Proactive Refresh check
+        const isDirty = localStorage.getItem("mediaStream_history_dirty") === "true";
+        if (isDirty) {
+            localStorage.removeItem("mediaStream_history_dirty");
+            refreshData();
+        } else {
+            // Try to load discovery from cache first
+            const cachedStr = localStorage.getItem("mediaStreamCache");
+            if (cachedStr) {
+                try {
+                    const cacheData = JSON.parse(cachedStr);
+                    movies = cacheData.movies || [];
+                    series = cacheData.series || [];
+                    anime = cacheData.anime || [];
+                } catch (e) {
+                    console.warn("Failed to parse cache", e);
+                    refreshData();
+                }
+            } else {
+                refreshData();
             }
         }
 
-        // If no cache or error parsing, fetch fresh data
-        refreshData();
+        // Handle case where app is kept in background and focused again
+        const focusListener = () => {
+            if (localStorage.getItem("mediaStream_history_dirty") === "true") {
+                localStorage.removeItem("mediaStream_history_dirty");
+                refreshData();
+            }
+        };
+        window.addEventListener("focus", focusListener);
+        return () => window.removeEventListener("focus", focusListener);
     });
 
     function openMediaCard(event) {
@@ -282,6 +327,7 @@
         if (isSearchMode) {
             isSearchMode = false;
             searchQuery = "";
+            focusedIndex = -1;
         } else {
             isSearchMode = true;
             // Focus search input after a small timeout to allow rendering
@@ -298,9 +344,60 @@
         } else if (event.key === 'Escape') {
             isSearchMode = false;
             searchQuery = "";
+            focusedIndex = -1;
         }
     }
+
+    function handleGlobalKeydown(event) {
+        if (!isSearchMode || allSearchResults.length === 0 || selectedMedia) return;
+
+        // If focus is in search input, only handle Down arrow to enter grid
+        if (document.activeElement?.classList.contains('search-input')) {
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                focusedIndex = 0;
+                document.activeElement.blur();
+            }
+            return;
+        }
+
+        const itemsPerRow = 6; // Assumption for desktop grid
+
+        if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            focusedIndex = Math.min(focusedIndex + 1, allSearchResults.length - 1);
+        } else if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            focusedIndex = Math.max(focusedIndex - 1, 0);
+        } else if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            if (focusedIndex === -1) focusedIndex = 0;
+            else focusedIndex = Math.min(focusedIndex + itemsPerRow, allSearchResults.length - 1);
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            if (focusedIndex < itemsPerRow) {
+                focusedIndex = -1;
+                document.querySelector('.search-input')?.focus();
+            } else {
+                focusedIndex = Math.max(focusedIndex - itemsPerRow, 0);
+            }
+        } else if (event.key === 'Enter' && focusedIndex >= 0) {
+            event.preventDefault();
+            openMediaCard({ detail: allSearchResults[focusedIndex] });
+        } else if (event.key === 'Escape') {
+            isSearchMode = false;
+            focusedIndex = -1;
+        }
+    }
+
+    function handleFilterChange(event) {
+        selectedGenres = event.detail.selectedGenres;
+        selectedLanguage = event.detail.selectedLanguage;
+        performSearch();
+    }
 </script>
+
+<svelte:window on:keydown={handleGlobalKeydown} />
 
 <!-- HEADER -->
 <header class="navbar">
@@ -350,6 +447,35 @@
                     d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
                 ></path></svg
             >
+        </button>
+        <!-- SVG Filter Icon -->
+        <button 
+            class="icon-btn" 
+            aria-label="Filter" 
+            on:click={() => isFilterVisible = !isFilterVisible}
+            title="Toggle Filters"
+        >
+            <svg 
+                xmlns="http://www.w3.org/2005/svg" 
+                width="24" 
+                height="24" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke={isFilterVisible ? "var(--accent-color)" : "currentColor"} 
+                stroke-width="2" 
+                stroke-linecap="round" 
+                stroke-linejoin="round"
+            >
+                <line x1="4" y1="21" x2="4" y2="14"></line>
+                <line x1="4" y1="10" x2="4" y2="3"></line>
+                <line x1="12" y1="21" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12" y2="3"></line>
+                <line x1="20" y1="21" x2="20" y2="16"></line>
+                <line x1="20" y1="12" x2="20" y2="3"></line>
+                <line x1="1" y1="14" x2="7" y2="14"></line>
+                <line x1="9" y1="8" x2="15" y2="8"></line>
+                <line x1="17" y1="16" x2="23" y2="16"></line>
+            </svg>
         </button>
         <!-- SVG Search Icon -->
         <button class="icon-btn" aria-label="Search" on:click={toggleSearch}>
@@ -531,44 +657,35 @@
     {:else}
         <!-- SEARCH RESULTS -->
         <div class="search-results-info">
-            <h2>Search Results for "{searchQuery}"</h2>
-            {#if !isSearching && searchMovies.length === 0 && searchSeries.length === 0 && searchAnime.length === 0}
+            <div class="search-title-row">
+                <h2>Search Results for "{searchQuery}"</h2>
+                <button class="text-btn" on:click={() => isFilterVisible = !isFilterVisible}>
+                    {isFilterVisible ? 'Hide Filters' : 'Show Filters'}
+                </button>
+            </div>
+            
+            {#if isFilterVisible}
+                <FilterBar 
+                    {selectedGenres} 
+                    {selectedLanguage} 
+                    on:change={handleFilterChange} 
+                />
+            {/if}
+
+            {#if !isSearching && allSearchResults.length === 0}
                 <div class="empty-state">No results found for your search.</div>
             {/if}
         </div>
 
-        {#if searchMovies.length > 0}
-            <section class="gallery-row">
-                <h2>Movies</h2>
-                <div class="row-scroll">
-                    {#each searchMovies as item}
-                        <PosterCard {item} on:select={openMediaCard} />
-                    {/each}
-                </div>
-            </section>
-        {/if}
-
-        {#if searchSeries.length > 0}
-            <section class="gallery-row">
-                <h2>Series</h2>
-                <div class="row-scroll">
-                    {#each searchSeries as item}
-                        <PosterCard {item} on:select={openMediaCard} />
-                    {/each}
-                </div>
-            </section>
-        {/if}
-
-        {#if searchAnime.length > 0}
-            <section class="gallery-row">
-                <h2>Anime</h2>
-                <div class="row-scroll">
-                    {#each searchAnime as item}
-                        <PosterCard {item} on:select={openMediaCard} />
-                    {/each}
-                </div>
-            </section>
-        {/if}
+        <div class="search-grid">
+            {#each allSearchResults as item, i}
+                <PosterCard 
+                    {item} 
+                    focused={focusedIndex === i}
+                    on:select={openMediaCard} 
+                />
+            {/each}
+        </div>
     {/if}
 
     {#if selectedMedia}
@@ -815,5 +932,47 @@
         height: 25px;
         border-width: 3px;
         margin: 0;
+    }
+    /* Search Grid */
+    .search-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 1.5rem;
+        padding: 1rem 0;
+    }
+
+    @media (min-width: 768px) {
+        .search-grid {
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        }
+    }
+
+    @media (min-width: 1400px) {
+        .search-grid {
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        }
+    }
+
+    .search-title-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .text-btn {
+        background: transparent;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: all 0.2s;
+    }
+
+    .text-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: var(--accent-color);
     }
 </style>

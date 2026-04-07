@@ -199,11 +199,13 @@
             ws.onclose = null; // Prevent reconnect
             ws.close();
         }
+        localStorage.setItem("mediaStream_history_dirty", "true");
         saveWatchHistory();
     });
 
     function goBack() {
         saveWatchHistory();
+        localStorage.setItem("mediaStream_history_dirty", "true");
         goto("/");
     }
 
