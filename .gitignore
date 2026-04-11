@@ -1,6 +1,7 @@
 /vcpkg
 /.agents
 /.vscode
+/.claude
 /HttpMediaStream
 .env
 quick-start-vm.sh
