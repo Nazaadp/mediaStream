@@ -175,7 +175,7 @@ namespace media::services {
     // Fetch torrents for a specific IMDB ID + season + episode.
     // EZTV supports ?imdb_id={numeric} — we filter by S/E from the title client-side.
     std::vector<TorrentQuality> EZTVClient::fetchEpisodeTorrents(
-        const std::string& imdb_id, int season, int episode, const std::string& title)
+        const std::string& imdb_id, int season, int episode, [[maybe_unused]] const std::string& title)
     {
         std::vector<TorrentQuality> results;
         if ( imdb_id.empty() || imdb_id.size() < 4) return results;
