@@ -132,15 +132,22 @@ namespace media::services {
     std::vector<DiscoveredContent> ContentDiscoveryManager::searchAll(const std::string& query, int limit_per_source) {
         std::vector<DiscoveredContent> all_results;
 
+        // Fetch metadata from TMDB and Cinemeta in parallel — no torrent sources.
+        auto f_tmdb = std::async(std::launch::async, [&]{
+            return m_tmdb_catalog->search(query, limit_per_source, 1);
+        });
+        auto f_cine = std::async(std::launch::async, [&]{
+            return m_cinemeta->search(query, limit_per_source, 1);
+        });
+
         try {
-            auto tmdb = m_tmdb_catalog->search(query, limit_per_source, 1);
+            auto tmdb = f_tmdb.get();
             all_results.insert(all_results.end(), tmdb.begin(), tmdb.end());
         } catch (const std::exception& e) {
             spdlog::error("TMDB search failed: {}", e.what());
         }
-
         try {
-            auto cine = m_cinemeta->search(query, limit_per_source, 1);
+            auto cine = f_cine.get();
             all_results.insert(all_results.end(), cine.begin(), cine.end());
         } catch (const std::exception& e) {
             spdlog::error("Cinemeta search failed: {}", e.what());
@@ -148,42 +155,37 @@ namespace media::services {
 
         spdlog::info("Search '{}' returned {} raw results", query, all_results.size());
 
-        // Deduplicate results based on IDs (TMDB or IMDB)
+        // Deduplicate by TMDB or IMDB id
         std::vector<DiscoveredContent> unique_results;
         std::set<std::string> seen_ids;
         for (const auto& item : all_results) {
             std::string id = item.tmdb_id.empty() ? item.imdb_id : item.tmdb_id;
             if (!id.empty()) {
-                if (seen_ids.find(id) != seen_ids.end()) continue;
+                if (seen_ids.count(id)) continue;
                 seen_ids.insert(id);
             }
             unique_results.push_back(item);
         }
         all_results = std::move(unique_results);
 
-        // Sort results: Primary by Year (Desc), Secondary by Rating (Desc)
-        std::sort(all_results.begin(), all_results.end(), [](const DiscoveredContent& a, const DiscoveredContent& b) {
-            if (a.year != b.year) {
-                return a.year > b.year; // More recent first
-            }
-            return b.rating > a.rating; // Higher rated first (Wait, b.rating > a.rating is Ascending? No, a.rating > b.rating is Descending. Wait.)
-        });
-        
-        // Correct sorting for Descending: a > b
+        // Sort: year desc, then rating desc
         std::sort(all_results.begin(), all_results.end(), [](const DiscoveredContent& a, const DiscoveredContent& b) {
             if (a.year != b.year) return a.year > b.year;
             return a.rating > b.rating;
         });
 
-        // Cap the total results before enrichment to prevent 100+ Torrentio requests
-        // using our 500ms rate limiter (which would take ~50s).
-        if (all_results.size() > 20) {
-            all_results.resize(20);
-            spdlog::info("Capped search results to 20 for enrichment stability.");
+        // TMDB metadata enrichment only — fills imdb_id on items that lack it so the
+        // lazy torrent endpoints (/movie_torrents, /episode_torrents) can work when the
+        // user opens a card. No Torrentio calls here.
+        std::vector<std::future<void>> futures;
+        for (auto& item : all_results) {
+            futures.push_back(std::async(std::launch::async, [&item, this]() {
+                if (item.imdb_id.empty()) m_tmdb->enrichContent(item);
+            }));
         }
-        
-        enrichAndDeduplicate(all_results, m_tmdb.get(), m_torrentio.get());
+        for (auto& f : futures) f.wait();
 
+        spdlog::info("Search '{}': {} results (metadata only, torrents on-demand)", query, all_results.size());
         return all_results;
     }
 
