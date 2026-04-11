@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <sstream>
+#include <regex>
 
 using json = nlohmann::json;
 
@@ -177,7 +178,7 @@ namespace media::services {
         const std::string& imdb_id, int season, int episode, const std::string& title)
     {
         std::vector<TorrentQuality> results;
-        if imdb_id.empty() || (imdb_id.size() < 4) return results;
+        if ( imdb_id.empty() || imdb_id.size() < 4) return results;
 
         // Strip "tt" prefix and leading zeros for EZTV
         std::string numeric_id = imdb_id;
