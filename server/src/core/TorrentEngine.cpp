@@ -118,9 +118,16 @@ namespace media::core {
             std::string current_hash = to_hex_string(h.info_hash());
             
             if (current_hash == info_hash_str) {
-                m_session.remove_torrent(h);
-                m_moov_boosted.erase(info_hash_str); // Allow re-add to re-boost
-                spdlog::info("Torrent removed: {}", info_hash_str);
+                m_session.remove_torrent(h, lt::session::delete_files);
+                m_moov_boosted.erase(info_hash_str);
+                // Clean up per-piece deadline tracking keys for this hash
+                for (auto it = m_moov_deadline_set.begin(); it != m_moov_deadline_set.end(); ) {
+                    if (it->substr(0, info_hash_str.size()) == info_hash_str)
+                        it = m_moov_deadline_set.erase(it);
+                    else
+                        ++it;
+                }
+                spdlog::info("Torrent removed with files: {}", info_hash_str);
                 return;
             }
         }
