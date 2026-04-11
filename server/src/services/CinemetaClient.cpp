@@ -48,35 +48,36 @@ namespace media::services {
                 auto j = json::parse(json_response);
                 if (!j.contains("metas") || !j["metas"].is_array()) return results;
 
+                // Helper: returns "" for missing or non-string (including null) fields.
+                auto safeStr = [](const json& obj, const std::string& key) -> std::string {
+                    if (!obj.contains(key) || !obj[key].is_string()) return "";
+                    return obj[key].get<std::string>();
+                };
+
                 for (const auto& meta : j["metas"]) {
                     DiscoveredContent content;
-                    content.imdb_id = meta.value("id", "");
-                    content.title = meta.value("name", "");
+                    content.imdb_id = safeStr(meta, "id");
+                    content.title   = safeStr(meta, "name");
                     content.original_title = content.title;
-                    
-                    if (meta.contains("year") && meta["year"].is_string()) {
-                        try {
-                            content.year = std::stoi(meta["year"].get<std::string>());
-                        } catch (...) { content.year = 0; }
-                    } else if (meta.contains("releaseInfo") && meta["releaseInfo"].is_string()) {
-                        try {
-                            content.year = std::stoi(meta["releaseInfo"].get<std::string>().substr(0, 4));
-                        } catch (...) { content.year = 0; }
+
+                    const std::string year_str = safeStr(meta, "year");
+                    const std::string release_str = safeStr(meta, "releaseInfo");
+                    if (!year_str.empty()) {
+                        try { content.year = std::stoi(year_str); } catch (...) {}
+                    } else if (!release_str.empty()) {
+                        try { content.year = std::stoi(release_str.substr(0, 4)); } catch (...) {}
                     }
 
-                    content.poster_url = meta.value("poster", "");
-                    if (meta.contains("description")) content.description = meta.value("description", "");
-                    if (meta.contains("imdbRating")) {
-                        try {
-                            content.rating = std::stof(meta["imdbRating"].get<std::string>());
-                        } catch (...) { content.rating = 0.0f; }
+                    content.poster_url  = safeStr(meta, "poster");
+                    content.description = safeStr(meta, "description");
+
+                    const std::string rating_str = safeStr(meta, "imdbRating");
+                    if (!rating_str.empty()) {
+                        try { content.rating = std::stof(rating_str); } catch (...) {}
                     }
-                    
-                    if (meta.contains("type") && meta["type"].is_string()) {
-                        content.type = meta["type"].get<std::string>() == "series" ? "tv" : "movie";
-                    } else {
-                        content.type = "movie";
-                    }
+
+                    const std::string type_str = safeStr(meta, "type");
+                    content.type = (type_str == "series") ? "tv" : "movie";
 
                     content.source = source_tag;
                     results.push_back(content);
