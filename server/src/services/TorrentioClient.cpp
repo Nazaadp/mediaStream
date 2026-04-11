@@ -96,6 +96,31 @@ namespace media::services {
             return "Unknown";
         }
 
+        // Extracts the source tracker name from the Torrentio title block.
+        // Torrentio embeds it after the ⚙️ emoji (UTF-8: \xE2\x9A\x99\xEF\xB8\x8F)
+        // Example title line: "👤 100 💾 1.4 GB ⚙️ YTS"
+        std::string parseSource(const std::string& title) {
+            // ⚙️ in UTF-8
+            const std::string gear = "\xE2\x9A\x99\xEF\xB8\x8F";
+            auto pos = title.find(gear);
+            if (pos == std::string::npos) return "torrentio";
+
+            size_t start = pos + gear.size();
+            while (start < title.size() && (title[start] == ' ' || title[start] == '\t')) {
+                start++;
+            }
+            size_t end = start;
+            while (end < title.size() && title[end] != '\n' && title[end] != '\r') {
+                end++;
+            }
+            std::string src = title.substr(start, end - start);
+            // Trim trailing whitespace
+            while (!src.empty() && (src.back() == ' ' || src.back() == '\t')) {
+                src.pop_back();
+            }
+            return src.empty() ? "torrentio" : src;
+        }
+
         std::vector<DiscoveredContent> parseStreams(const std::string& json_response) {
             std::vector<DiscoveredContent> results;
             if (json_response.empty()) return results;
@@ -118,7 +143,7 @@ namespace media::services {
                         
                         std::string full_title = stream.value("title", "");
                         tq.quality = parseName(full_title);
-                        tq.type = "torrentio";
+                        tq.type = parseSource(full_title);
                         tq.hash = stream.value("infoHash", "");
                         tq.size_bytes = parseSizeStr(full_title);
                         tq.seeders = parseSeeders(full_title);

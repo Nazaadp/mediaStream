@@ -109,7 +109,7 @@ namespace media::services {
                     // Add torrent info
                     TorrentQuality tq;
                     tq.quality = "1080p"; // Default assumption
-                    tq.type = "web";
+                    tq.type = "Nyaa";
                     
                     if (std::regex_search(item_content, seeders_match, seeders_regex)) {
                         tq.seeders = std::stoi(seeders_match[1].str());

@@ -83,7 +83,7 @@ namespace media::services {
                     // Add torrent
                     TorrentQuality tq;
                     tq.quality = "720p"; // EZTV typically 720p
-                    tq.type = "web";
+                    tq.type = "EZTV";
                     if (torrent["size_bytes"].is_string()) {
                         tq.size_bytes = std::stoull(torrent["size_bytes"].get<std::string>());
                     } else if (torrent["size_bytes"].is_number()) {

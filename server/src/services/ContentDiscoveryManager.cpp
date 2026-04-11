@@ -18,6 +18,46 @@ namespace media::services {
         spdlog::info("Content Discovery Manager initialized");
     }
     namespace {
+
+        // Merges torrents from a native source (YTS/EZTV/Nyaa) into the metadata results
+        // by matching on IMDB ID. Items with no IMDB ID are skipped.
+        void mergeNativeTorrents(
+            std::vector<DiscoveredContent>& results,
+            const std::vector<DiscoveredContent>& native_items
+        ) {
+            // Build a lookup: imdb_id → index in results
+            std::unordered_map<std::string, size_t> idx_by_imdb;
+            for (size_t i = 0; i < results.size(); ++i) {
+                if (!results[i].imdb_id.empty()) {
+                    idx_by_imdb[results[i].imdb_id] = i;
+                }
+            }
+
+            for (const auto& native : native_items) {
+                if (native.imdb_id.empty()) continue;
+                auto it = idx_by_imdb.find(native.imdb_id);
+                if (it == idx_by_imdb.end()) continue;
+
+                auto& target = results[it->second];
+                for (const auto& tq : native.torrents) {
+                    // Avoid duplicating by hash
+                    std::string hash_lower = tq.hash;
+                    std::transform(hash_lower.begin(), hash_lower.end(), hash_lower.begin(), ::tolower);
+                    bool already_present = std::any_of(
+                        target.torrents.begin(), target.torrents.end(),
+                        [&](const TorrentQuality& existing) {
+                            std::string h = existing.hash;
+                            std::transform(h.begin(), h.end(), h.begin(), ::tolower);
+                            return h == hash_lower;
+                        }
+                    );
+                    if (!already_present) {
+                        target.torrents.push_back(tq);
+                    }
+                }
+            }
+        }
+
         void enrichAndDeduplicate(std::vector<DiscoveredContent>& list, TMDBFetcher* tmdb, TorrentioClient* tio) {
             std::vector<std::future<void>> futures;
             spdlog::info("Asynchronously enriching {} items...", list.size());
@@ -25,7 +65,10 @@ namespace media::services {
             for (auto& item : list) {
                 // Launch asynchronous task for EACH item to drastically reduce latency
                 futures.push_back(std::async(std::launch::async, [&item, tmdb, tio]() {
-                    tmdb->enrichContent(item);
+                    // Skip TMDB enrichment if already done (imdb_id populated by pre-enrichment pass)
+                    if (item.imdb_id.empty()) {
+                        tmdb->enrichContent(item);
+                    }
 
                     if (!item.imdb_id.empty()) {
                         auto type = item.type.empty() ? (item.source == "EZTV" || item.source == "Nyaa" ? "tv" : "movie") : item.type;
@@ -186,17 +229,30 @@ namespace media::services {
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchMovies(int limit, int page, const std::string& genre, const std::string& language) {
         std::vector<DiscoveredContent> results;
         try {
-            auto cine = m_cinemeta->fetchPopular(limit, page, genre, language);
-            auto tmdb = m_tmdb_catalog->fetchPopular(limit, page, genre, language);
+            // Fetch metadata sources and YTS native torrents in parallel
+            auto f_cine = std::async(std::launch::async, [&]{ return m_cinemeta->fetchPopular(limit, page, genre, language); });
+            auto f_tmdb = std::async(std::launch::async, [&]{ return m_tmdb_catalog->fetchPopular(limit, page, genre, language); });
+            auto f_yts  = std::async(std::launch::async, [&]{ return m_yts->fetchPopular(limit, page, genre, language); });
+
+            auto cine = f_cine.get();
+            auto tmdb = f_tmdb.get();
+            auto yts  = f_yts.get();
+            spdlog::info("fetchMovies: Cinemeta={}, TMDB={}, YTS={}", cine.size(), tmdb.size(), yts.size());
 
             results.insert(results.end(), tmdb.begin(), tmdb.end());
             results.insert(results.end(), cine.begin(), cine.end());
 
-            // Cap the concatenated catalog to the requested limit so we don't enrich 60+ items per row.
-            // This massively reduces the parallel requests sent to Torrentio, obeying CF limits.
             if (limit > 0 && results.size() > static_cast<size_t>(limit)) {
                 results.resize(limit);
             }
+
+            // TMDB enrichment gives us IMDB IDs so mergeNativeTorrents can match
+            for (auto& item : results) {
+                m_tmdb->enrichContent(item);
+            }
+
+            // Merge YTS torrents by IMDB ID before Torrentio enrichment
+            mergeNativeTorrents(results, yts);
 
             enrichAndDeduplicate(results, m_tmdb.get(), m_torrentio.get());
         } catch (const std::exception& e) {
@@ -208,8 +264,15 @@ namespace media::services {
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchSeries(int limit, int page, const std::string& genre, const std::string& language) {
         std::vector<DiscoveredContent> results;
         try {
-            auto cine = m_cinemeta->fetchSeries(limit, page, genre, language);
-            auto tmdb = m_tmdb_catalog->fetchSeries(limit, page, genre, language);
+            // Fetch metadata sources and EZTV native torrents in parallel
+            auto f_cine = std::async(std::launch::async, [&]{ return m_cinemeta->fetchSeries(limit, page, genre, language); });
+            auto f_tmdb = std::async(std::launch::async, [&]{ return m_tmdb_catalog->fetchSeries(limit, page, genre, language); });
+            auto f_eztv = std::async(std::launch::async, [&]{ return m_eztv->fetchPopular(limit, page, genre, language); });
+
+            auto cine = f_cine.get();
+            auto tmdb = f_tmdb.get();
+            auto eztv = f_eztv.get();
+            spdlog::info("fetchSeries: Cinemeta={}, TMDB={}, EZTV={}", cine.size(), tmdb.size(), eztv.size());
 
             results.insert(results.end(), tmdb.begin(), tmdb.end());
             results.insert(results.end(), cine.begin(), cine.end());
@@ -217,6 +280,12 @@ namespace media::services {
             if (limit > 0 && results.size() > static_cast<size_t>(limit)) {
                 results.resize(limit);
             }
+
+            for (auto& item : results) {
+                m_tmdb->enrichContent(item);
+            }
+
+            mergeNativeTorrents(results, eztv);
 
             enrichAndDeduplicate(results, m_tmdb.get(), m_torrentio.get());
         } catch (const std::exception& e) {
@@ -228,14 +297,25 @@ namespace media::services {
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchAnime(int limit, int page, const std::string& genre, const std::string& language) {
         std::vector<DiscoveredContent> results;
         try {
-            // Cinemeta doesn't have an Anime-specific root catalog by default, so we fall back to TMDB natively
-            auto tmdb = m_tmdb_catalog->fetchAnime(limit, page, genre, language);
+            // Fetch TMDB anime catalog and Nyaa native torrents in parallel
+            auto f_tmdb = std::async(std::launch::async, [&]{ return m_tmdb_catalog->fetchAnime(limit, page, genre, language); });
+            auto f_nyaa = std::async(std::launch::async, [&]{ return m_nyaa->fetchPopular(limit, page, genre, language); });
+
+            auto tmdb = f_tmdb.get();
+            auto nyaa = f_nyaa.get();
+            spdlog::info("fetchAnime: TMDB={}, Nyaa={}", tmdb.size(), nyaa.size());
 
             results.insert(results.end(), tmdb.begin(), tmdb.end());
 
             if (limit > 0 && results.size() > static_cast<size_t>(limit)) {
                 results.resize(limit);
             }
+
+            for (auto& item : results) {
+                m_tmdb->enrichContent(item);
+            }
+
+            mergeNativeTorrents(results, nyaa);
 
             enrichAndDeduplicate(results, m_tmdb.get(), m_torrentio.get());
         } catch (const std::exception& e) {
