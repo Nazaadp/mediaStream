@@ -19,45 +19,6 @@ namespace media::services {
     }
     namespace {
 
-        // Merges torrents from a native source (YTS/EZTV/Nyaa) into the metadata results
-        // by matching on IMDB ID. Items with no IMDB ID are skipped.
-        void mergeNativeTorrents(
-            std::vector<DiscoveredContent>& results,
-            const std::vector<DiscoveredContent>& native_items
-        ) {
-            // Build a lookup: imdb_id → index in results
-            std::unordered_map<std::string, size_t> idx_by_imdb;
-            for (size_t i = 0; i < results.size(); ++i) {
-                if (!results[i].imdb_id.empty()) {
-                    idx_by_imdb[results[i].imdb_id] = i;
-                }
-            }
-
-            for (const auto& native : native_items) {
-                if (native.imdb_id.empty()) continue;
-                auto it = idx_by_imdb.find(native.imdb_id);
-                if (it == idx_by_imdb.end()) continue;
-
-                auto& target = results[it->second];
-                for (const auto& tq : native.torrents) {
-                    // Avoid duplicating by hash
-                    std::string hash_lower = tq.hash;
-                    std::transform(hash_lower.begin(), hash_lower.end(), hash_lower.begin(), ::tolower);
-                    bool already_present = std::any_of(
-                        target.torrents.begin(), target.torrents.end(),
-                        [&](const TorrentQuality& existing) {
-                            std::string h = existing.hash;
-                            std::transform(h.begin(), h.end(), h.begin(), ::tolower);
-                            return h == hash_lower;
-                        }
-                    );
-                    if (!already_present) {
-                        target.torrents.push_back(tq);
-                    }
-                }
-            }
-        }
-
         void enrichAndDeduplicate(std::vector<DiscoveredContent>& list, TMDBFetcher* tmdb, TorrentioClient* tio) {
             std::vector<std::future<void>> futures;
             spdlog::info("Asynchronously enriching {} items...", list.size());
