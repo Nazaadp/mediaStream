@@ -14,6 +14,10 @@ namespace media::services {
         // Enriches the given content with TMDB metadata (posters, descriptions, ratings)
         // using the imdb_id or title.
         void enrichContent(DiscoveredContent& content);
+
+        // On-demand season/episode data for series navigation
+        std::vector<SeasonInfo>  fetchSeasons(const std::string& imdb_id);
+        std::vector<EpisodeInfo> fetchEpisodes(const std::string& imdb_id, int season);
         
     private:
         class Impl;

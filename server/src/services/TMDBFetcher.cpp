@@ -170,4 +170,97 @@ namespace media::services {
         m_impl->enrichContent(content);
     }
 
+    std::vector<SeasonInfo> TMDBFetcher::fetchSeasons(const std::string& imdb_id) {
+        std::vector<SeasonInfo> results;
+        if (m_impl->m_api_key.empty() || imdb_id.empty()) return results;
+
+        try {
+            // Step 1: resolve IMDB ID → TMDB ID
+            std::string find_url = m_impl->BASE_URL + "/find/" + imdb_id + "?external_source=imdb_id&language=en-US";
+            std::string find_res = tmdbHttpGet(find_url, m_impl->m_api_key);
+            if (find_res.empty()) return results;
+
+            auto fj = json::parse(find_res);
+            std::string tmdb_id;
+            if (fj.contains("tv_results") && !fj["tv_results"].empty()) {
+                tmdb_id = std::to_string(fj["tv_results"][0].value("id", 0));
+            }
+            if (tmdb_id.empty() || tmdb_id == "0") {
+                spdlog::warn("fetchSeasons: no TMDB TV match for {}", imdb_id);
+                return results;
+            }
+
+            // Step 2: fetch show details (includes seasons array)
+            std::string show_url = m_impl->BASE_URL + "/tv/" + tmdb_id + "?language=en-US";
+            std::string show_res = tmdbHttpGet(show_url, m_impl->m_api_key);
+            if (show_res.empty()) return results;
+
+            auto sj = json::parse(show_res);
+            if (!sj.contains("seasons")) return results;
+
+            const std::string IMG_BASE = "https://image.tmdb.org/t/p/w300";
+            for (const auto& s : sj["seasons"]) {
+                int sn = s.value("season_number", -1);
+                if (sn < 1) continue; // skip specials (season 0)
+                SeasonInfo si;
+                si.season_number = sn;
+                si.name = s.value("name", "Season " + std::to_string(sn));
+                si.episode_count = s.value("episode_count", 0);
+                if (s.contains("poster_path") && s["poster_path"].is_string()) {
+                    si.poster_url = IMG_BASE + s["poster_path"].get<std::string>();
+                }
+                results.push_back(si);
+            }
+            spdlog::info("fetchSeasons: {} seasons for {}", results.size(), imdb_id);
+        } catch (const std::exception& e) {
+            spdlog::error("fetchSeasons failed for {}: {}", imdb_id, e.what());
+        }
+        return results;
+    }
+
+    std::vector<EpisodeInfo> TMDBFetcher::fetchEpisodes(const std::string& imdb_id, int season) {
+        std::vector<EpisodeInfo> results;
+        if (m_impl->m_api_key.empty() || imdb_id.empty()) return results;
+
+        try {
+            // Resolve IMDB → TMDB ID
+            std::string find_url = m_impl->BASE_URL + "/find/" + imdb_id + "?external_source=imdb_id&language=en-US";
+            std::string find_res = tmdbHttpGet(find_url, m_impl->m_api_key);
+            if (find_res.empty()) return results;
+
+            auto fj = json::parse(find_res);
+            std::string tmdb_id;
+            if (fj.contains("tv_results") && !fj["tv_results"].empty()) {
+                tmdb_id = std::to_string(fj["tv_results"][0].value("id", 0));
+            }
+            if (tmdb_id.empty() || tmdb_id == "0") return results;
+
+            // Fetch season episodes
+            std::string ep_url = m_impl->BASE_URL + "/tv/" + tmdb_id + "/season/" + std::to_string(season) + "?language=en-US";
+            std::string ep_res = tmdbHttpGet(ep_url, m_impl->m_api_key);
+            if (ep_res.empty()) return results;
+
+            auto ej = json::parse(ep_res);
+            if (!ej.contains("episodes")) return results;
+
+            const std::string STILL_BASE = "https://image.tmdb.org/t/p/w300";
+            for (const auto& ep : ej["episodes"]) {
+                EpisodeInfo ei;
+                ei.episode_number = ep.value("episode_number", 0);
+                ei.season_number = season;
+                ei.name = ep.value("name", "Episode " + std::to_string(ei.episode_number));
+                ei.overview = ep.value("overview", "");
+                ei.rating = ep.value("vote_average", 0.0f);
+                if (ep.contains("still_path") && ep["still_path"].is_string()) {
+                    ei.still_url = STILL_BASE + ep["still_path"].get<std::string>();
+                }
+                results.push_back(ei);
+            }
+            spdlog::info("fetchEpisodes: {} episodes for {} S{}", results.size(), imdb_id, season);
+        } catch (const std::exception& e) {
+            spdlog::error("fetchEpisodes failed for {} S{}: {}", imdb_id, season, e.what());
+        }
+        return results;
+    }
+
 } // namespace media::services

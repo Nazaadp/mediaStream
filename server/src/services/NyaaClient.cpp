@@ -214,6 +214,89 @@ namespace media::services {
         return std::nullopt;
     }
 
+    // Fetch torrents for a specific anime episode by title + episode number.
+    // Searches Nyaa RSS for "{title}" then filters by episode pattern in the title.
+    std::vector<TorrentQuality> NyaaClient::fetchEpisodeTorrents(
+        const std::string& title, int episode)
+    {
+        if (title.empty()) return {};
+
+        // URL-encode title (spaces → +)
+        std::string encoded = title;
+        std::replace(encoded.begin(), encoded.end(), ' ', '+');
+
+        // Search Nyaa anime-english (c=1_2) sorted by seeders
+        std::string url = m_impl->BASE_URL + "/?page=rss&c=1_2&s=seeders&o=desc&q=" + encoded;
+        spdlog::info("Nyaa episode fetch: {} ep {}", title, episode);
+
+        std::string response = httpGet(url);
+        if (response.empty()) return {};
+
+        std::vector<TorrentQuality> results;
+        try {
+            // Build episode filter: matches " - 01 " / "E01" / " 01 [" patterns
+            char ep_buf[64];
+            std::snprintf(ep_buf, sizeof(ep_buf),
+                "(?:[-\\s]%02d[\\s\\[\\(]|[Ee]%02d[^\\d]|\\s%d\\s)", episode, episode, episode);
+            std::regex ep_re(ep_buf);
+
+            std::regex item_re("<item>([\\s\\S]*?)</item>", std::regex::icase);
+            std::regex title_re("<title>([\\s\\S]*?)</title>");
+            std::regex seeders_re("<nyaa:seeders>(\\d+)</nyaa:seeders>");
+            std::regex leechers_re("<nyaa:leechers>(\\d+)</nyaa:leechers>");
+            std::regex hash_re("<nyaa:infoHash>([\\s\\S]*?)</nyaa:infoHash>");
+            std::regex size_re("<nyaa:size>([\\s\\S]*?)</nyaa:size>");
+
+            std::sregex_iterator it(response.begin(), response.end(), item_re);
+            std::sregex_iterator end;
+
+            for (; it != end; ++it) {
+                std::string item = (*it)[1].str();
+                std::smatch m;
+
+                if (!std::regex_search(item, m, title_re)) continue;
+                std::string full_title = m[1].str();
+
+                // Filter: must match episode number
+                if (!std::regex_search(full_title, ep_re)) continue;
+
+                TorrentQuality tq;
+                tq.quality = full_title;
+                tq.type = "Nyaa";
+
+                if (std::regex_search(item, m, seeders_re))  tq.seeders  = std::stoi(m[1].str());
+                if (std::regex_search(item, m, leechers_re)) tq.leechers = std::stoi(m[1].str());
+                if (std::regex_search(item, m, hash_re)) {
+                    tq.hash = m[1].str();
+                    std::ostringstream magnet;
+                    magnet << "magnet:?xt=urn:btih:" << tq.hash
+                           << "&dn=" << full_title
+                           << "&tr=http://nyaa.tracker.wf:7777/announce"
+                           << "&tr=udp://open.stealth.si:80/announce"
+                           << "&tr=udp://tracker.opentrackr.org:1337/announce"
+                           << "&tr=udp://exodus.desync.com:6969/announce";
+                    tq.magnet_uri = magnet.str();
+                }
+                if (std::regex_search(item, m, size_re)) {
+                    // Parse "123.4 MiB" / "1.2 GiB"
+                    std::string sz = m[1].str();
+                    try {
+                        double num = std::stod(sz);
+                        if (sz.find("GiB") != std::string::npos || sz.find("GB") != std::string::npos)
+                            tq.size_bytes = static_cast<int64_t>(num * 1024 * 1024 * 1024);
+                        else
+                            tq.size_bytes = static_cast<int64_t>(num * 1024 * 1024);
+                    } catch (...) {}
+                }
+                if (!tq.hash.empty()) results.push_back(tq);
+            }
+            spdlog::info("Nyaa: {} torrents for \"{}\" ep {}", results.size(), title, episode);
+        } catch (const std::exception& e) {
+            spdlog::error("Nyaa fetchEpisodeTorrents error: {}", e.what());
+        }
+        return results;
+    }
+
 } // namespace media::services
 
 // Made with Bob

@@ -137,6 +137,132 @@ public:
             return createResponse(Status::CODE_500, "Internal Server Error");
         }
     }
+    ENDPOINT_INFO(getMovieTorrents) {
+        info->summary = "Get torrents for a movie by IMDB ID";
+    }
+    ENDPOINT("GET", "/api/v1/discover/movie_torrents", getMovieTorrents, REQUEST(std::shared_ptr<IncomingRequest>, request)) {
+        try {
+            auto id = request->getQueryParameter("imdb_id");
+            if (!id) return createResponse(Status::CODE_400, "Missing imdb_id");
+
+            auto torrents = m_discovery->fetchMovieTorrents(id->c_str());
+
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& t : torrents) {
+                nlohmann::json tj;
+                tj["quality"]    = t.quality;
+                tj["type"]       = t.type;
+                tj["size_bytes"] = t.size_bytes;
+                tj["hash"]       = t.hash;
+                tj["magnet_uri"] = t.magnet_uri;
+                tj["seeders"]    = t.seeders;
+                tj["leechers"]   = t.leechers;
+                arr.push_back(tj);
+            }
+            auto response = createResponse(Status::CODE_200, arr.dump());
+            response->putHeader("Content-Type", "application/json");
+            return response;
+        } catch (const std::exception& e) {
+            spdlog::error("getMovieTorrents error: {}", e.what());
+            return createResponse(Status::CODE_500, "Internal Server Error");
+        }
+    }
+
+    ENDPOINT_INFO(getSeasons) {
+        info->summary = "Get season list for a series by IMDB ID";
+    }
+    ENDPOINT("GET", "/api/v1/discover/seasons", getSeasons, REQUEST(std::shared_ptr<IncomingRequest>, request)) {
+        try {
+            auto id = request->getQueryParameter("imdb_id");
+            if (!id) return createResponse(Status::CODE_400, "Missing imdb_id");
+
+            auto seasons = m_discovery->fetchSeasons(id->c_str());
+
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& s : seasons) {
+                nlohmann::json sj;
+                sj["season_number"]  = s.season_number;
+                sj["name"]           = s.name;
+                sj["episode_count"]  = s.episode_count;
+                sj["poster_url"]     = s.poster_url;
+                arr.push_back(sj);
+            }
+            auto response = createResponse(Status::CODE_200, arr.dump());
+            response->putHeader("Content-Type", "application/json");
+            return response;
+        } catch (const std::exception& e) {
+            spdlog::error("getSeasons error: {}", e.what());
+            return createResponse(Status::CODE_500, "Internal Server Error");
+        }
+    }
+
+    ENDPOINT_INFO(getEpisodes) {
+        info->summary = "Get episode list for a series season by IMDB ID";
+    }
+    ENDPOINT("GET", "/api/v1/discover/episodes", getEpisodes, REQUEST(std::shared_ptr<IncomingRequest>, request)) {
+        try {
+            auto id = request->getQueryParameter("imdb_id");
+            auto sn = request->getQueryParameter("season");
+            if (!id || !sn) return createResponse(Status::CODE_400, "Missing imdb_id or season");
+
+            auto episodes = m_discovery->fetchEpisodes(id->c_str(), std::stoi(sn->c_str()));
+
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& ep : episodes) {
+                nlohmann::json ej;
+                ej["episode_number"] = ep.episode_number;
+                ej["season_number"]  = ep.season_number;
+                ej["name"]           = ep.name;
+                ej["overview"]       = ep.overview;
+                ej["still_url"]      = ep.still_url;
+                ej["rating"]         = ep.rating;
+                arr.push_back(ej);
+            }
+            auto response = createResponse(Status::CODE_200, arr.dump());
+            response->putHeader("Content-Type", "application/json");
+            return response;
+        } catch (const std::exception& e) {
+            spdlog::error("getEpisodes error: {}", e.what());
+            return createResponse(Status::CODE_500, "Internal Server Error");
+        }
+    }
+
+    ENDPOINT_INFO(getEpisodeTorrents) {
+        info->summary = "Get torrents for a specific episode";
+    }
+    ENDPOINT("GET", "/api/v1/discover/episode_torrents", getEpisodeTorrents, REQUEST(std::shared_ptr<IncomingRequest>, request)) {
+        try {
+            auto id = request->getQueryParameter("imdb_id");
+            auto sn = request->getQueryParameter("season");
+            auto ep = request->getQueryParameter("episode");
+            if (!id || !sn || !ep) return createResponse(Status::CODE_400, "Missing imdb_id, season, or episode");
+
+            auto t = request->getQueryParameter("title");
+            std::string title = t ? t->c_str() : "";
+            auto torrents = m_discovery->fetchEpisodeTorrents(
+                id->c_str(), std::stoi(sn->c_str()), std::stoi(ep->c_str()), title);
+
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& t : torrents) {
+                nlohmann::json tj;
+                tj["quality"]    = t.quality;
+                tj["type"]       = t.type;
+                tj["size_bytes"] = t.size_bytes;
+                tj["hash"]       = t.hash;
+                tj["magnet_uri"] = t.magnet_uri;
+                tj["seeders"]    = t.seeders;
+                tj["leechers"]   = t.leechers;
+                arr.push_back(tj);
+            }
+            auto response = createResponse(Status::CODE_200, arr.dump());
+            response->putHeader("Content-Type", "application/json");
+            return response;
+        } catch (const std::exception& e) {
+            spdlog::error("getEpisodeTorrents error: {}", e.what());
+            return createResponse(Status::CODE_500, "Internal Server Error");
+        }
+    }
+
     ENDPOINT_INFO(searchContent) {
         info->summary = "Search global catalog";
     }

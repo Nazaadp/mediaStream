@@ -229,15 +229,13 @@ namespace media::services {
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchMovies(int limit, int page, const std::string& genre, const std::string& language) {
         std::vector<DiscoveredContent> results;
         try {
-            // Fetch metadata sources and YTS native torrents in parallel
+            // Metadata only — torrents are fetched on-demand when a movie card is opened.
             auto f_cine = std::async(std::launch::async, [&]{ return m_cinemeta->fetchPopular(limit, page, genre, language); });
             auto f_tmdb = std::async(std::launch::async, [&]{ return m_tmdb_catalog->fetchPopular(limit, page, genre, language); });
-            auto f_yts  = std::async(std::launch::async, [&]{ return m_yts->fetchPopular(limit, page, genre, language); });
 
             auto cine = f_cine.get();
             auto tmdb = f_tmdb.get();
-            auto yts  = f_yts.get();
-            spdlog::info("fetchMovies: Cinemeta={}, TMDB={}, YTS={}", cine.size(), tmdb.size(), yts.size());
+            spdlog::info("fetchMovies: Cinemeta={}, TMDB={}", cine.size(), tmdb.size());
 
             results.insert(results.end(), tmdb.begin(), tmdb.end());
             results.insert(results.end(), cine.begin(), cine.end());
@@ -246,33 +244,68 @@ namespace media::services {
                 results.resize(limit);
             }
 
-            // TMDB enrichment gives us IMDB IDs so mergeNativeTorrents can match
+            // TMDB enrichment only (no Torrentio)
+            std::vector<std::future<void>> futures;
             for (auto& item : results) {
-                m_tmdb->enrichContent(item);
+                futures.push_back(std::async(std::launch::async, [&item, this]() {
+                    if (item.imdb_id.empty()) m_tmdb->enrichContent(item);
+                }));
             }
+            for (auto& f : futures) f.wait();
 
-            // Merge YTS torrents by IMDB ID before Torrentio enrichment
-            mergeNativeTorrents(results, yts);
-
-            enrichAndDeduplicate(results, m_tmdb.get(), m_torrentio.get());
         } catch (const std::exception& e) {
             spdlog::error("Failed to fetch movies: {}", e.what());
         }
         return results;
     }
 
+    std::vector<TorrentQuality> ContentDiscoveryManager::fetchMovieTorrents(const std::string& imdb_id) {
+        std::vector<TorrentQuality> results;
+
+        // Fetch Torrentio and YTS in parallel
+        auto f_tio = std::async(std::launch::async, [&]{
+            auto res = m_torrentio->searchTorrentsByIMDB(imdb_id, "movie");
+            return res.empty() ? std::vector<TorrentQuality>{} : res[0].torrents;
+        });
+        auto f_yts = std::async(std::launch::async, [&]{
+            auto res = m_yts->search(imdb_id, 20);
+            std::vector<TorrentQuality> tq;
+            for (const auto& item : res)
+                tq.insert(tq.end(), item.torrents.begin(), item.torrents.end());
+            return tq;
+        });
+
+        try { auto r = f_tio.get(); results.insert(results.end(), r.begin(), r.end()); } catch (...) {}
+        try { auto r = f_yts.get(); results.insert(results.end(), r.begin(), r.end()); } catch (...) {}
+
+        // Deduplicate by hash, keep highest seeder count
+        std::unordered_map<std::string, TorrentQuality> deduped;
+        for (const auto& t : results) {
+            std::string h = t.hash;
+            std::transform(h.begin(), h.end(), h.begin(), ::tolower);
+            if (deduped.find(h) == deduped.end() || t.seeders > deduped[h].seeders)
+                deduped[h] = t;
+        }
+        results.clear();
+        for (const auto& [h, tq] : deduped) results.push_back(tq);
+        std::sort(results.begin(), results.end(), [](const TorrentQuality& a, const TorrentQuality& b){
+            return a.seeders > b.seeders;
+        });
+
+        spdlog::info("fetchMovieTorrents: {} for {}", results.size(), imdb_id);
+        return results;
+    }
+
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchSeries(int limit, int page, const std::string& genre, const std::string& language) {
         std::vector<DiscoveredContent> results;
         try {
-            // Fetch metadata sources and EZTV native torrents in parallel
+            // Metadata only — no torrent fetching. Torrents are fetched on-demand per episode.
             auto f_cine = std::async(std::launch::async, [&]{ return m_cinemeta->fetchSeries(limit, page, genre, language); });
             auto f_tmdb = std::async(std::launch::async, [&]{ return m_tmdb_catalog->fetchSeries(limit, page, genre, language); });
-            auto f_eztv = std::async(std::launch::async, [&]{ return m_eztv->fetchPopular(limit, page, genre, language); });
 
             auto cine = f_cine.get();
             auto tmdb = f_tmdb.get();
-            auto eztv = f_eztv.get();
-            spdlog::info("fetchSeries: Cinemeta={}, TMDB={}, EZTV={}", cine.size(), tmdb.size(), eztv.size());
+            spdlog::info("fetchSeries: Cinemeta={}, TMDB={}", cine.size(), tmdb.size());
 
             results.insert(results.end(), tmdb.begin(), tmdb.end());
             results.insert(results.end(), cine.begin(), cine.end());
@@ -281,13 +314,15 @@ namespace media::services {
                 results.resize(limit);
             }
 
+            // TMDB enrichment only (no Torrentio)
+            std::vector<std::future<void>> futures;
             for (auto& item : results) {
-                m_tmdb->enrichContent(item);
+                futures.push_back(std::async(std::launch::async, [&item, this]() {
+                    if (item.imdb_id.empty()) m_tmdb->enrichContent(item);
+                }));
             }
+            for (auto& f : futures) f.wait();
 
-            mergeNativeTorrents(results, eztv);
-
-            enrichAndDeduplicate(results, m_tmdb.get(), m_torrentio.get());
         } catch (const std::exception& e) {
             spdlog::error("Failed to fetch series: {}", e.what());
         }
@@ -297,13 +332,9 @@ namespace media::services {
     std::vector<DiscoveredContent> ContentDiscoveryManager::fetchAnime(int limit, int page, const std::string& genre, const std::string& language) {
         std::vector<DiscoveredContent> results;
         try {
-            // Fetch TMDB anime catalog and Nyaa native torrents in parallel
-            auto f_tmdb = std::async(std::launch::async, [&]{ return m_tmdb_catalog->fetchAnime(limit, page, genre, language); });
-            auto f_nyaa = std::async(std::launch::async, [&]{ return m_nyaa->fetchPopular(limit, page, genre, language); });
-
-            auto tmdb = f_tmdb.get();
-            auto nyaa = f_nyaa.get();
-            spdlog::info("fetchAnime: TMDB={}, Nyaa={}", tmdb.size(), nyaa.size());
+            // Metadata only — no torrent fetching. Torrents are fetched on-demand per episode.
+            auto tmdb = m_tmdb_catalog->fetchAnime(limit, page, genre, language);
+            spdlog::info("fetchAnime: TMDB={}", tmdb.size());
 
             results.insert(results.end(), tmdb.begin(), tmdb.end());
 
@@ -311,16 +342,66 @@ namespace media::services {
                 results.resize(limit);
             }
 
+            std::vector<std::future<void>> futures;
             for (auto& item : results) {
-                m_tmdb->enrichContent(item);
+                futures.push_back(std::async(std::launch::async, [&item, this]() {
+                    if (item.imdb_id.empty()) m_tmdb->enrichContent(item);
+                }));
             }
+            for (auto& f : futures) f.wait();
 
-            mergeNativeTorrents(results, nyaa);
-
-            enrichAndDeduplicate(results, m_tmdb.get(), m_torrentio.get());
         } catch (const std::exception& e) {
             spdlog::error("Failed to fetch anime: {}", e.what());
         }
+        return results;
+    }
+
+    std::vector<SeasonInfo> ContentDiscoveryManager::fetchSeasons(const std::string& imdb_id) {
+        return m_tmdb->fetchSeasons(imdb_id);
+    }
+
+    std::vector<EpisodeInfo> ContentDiscoveryManager::fetchEpisodes(const std::string& imdb_id, int season) {
+        return m_tmdb->fetchEpisodes(imdb_id, season);
+    }
+
+    std::vector<TorrentQuality> ContentDiscoveryManager::fetchEpisodeTorrents(
+        const std::string& imdb_id, int season, int episode, const std::string& title)
+    {
+        std::vector<TorrentQuality> results;
+
+        // Fetch Torrentio, EZTV, and Nyaa (if title provided) in parallel
+        auto f_tio  = std::async(std::launch::async, [&]{
+            auto res = m_torrentio->searchTorrentsByIMDB(imdb_id, "tv", season, episode);
+            return res.empty() ? std::vector<TorrentQuality>{} : res[0].torrents;
+        });
+        auto f_eztv = std::async(std::launch::async, [&]{
+            return m_eztv->fetchEpisodeTorrents(imdb_id, season, episode);
+        });
+        auto f_nyaa = std::async(std::launch::async, [&]{
+            if (title.empty()) return std::vector<TorrentQuality>{};
+            return m_nyaa->fetchEpisodeTorrents(title, episode);
+        });
+
+        try { auto r = f_tio.get();  results.insert(results.end(), r.begin(), r.end()); } catch (...) {}
+        try { auto r = f_eztv.get(); results.insert(results.end(), r.begin(), r.end()); } catch (...) {}
+        try { auto r = f_nyaa.get(); results.insert(results.end(), r.begin(), r.end()); } catch (...) {}
+
+        // Deduplicate by hash
+        std::unordered_map<std::string, TorrentQuality> deduped;
+        for (const auto& t : results) {
+            std::string h = t.hash;
+            std::transform(h.begin(), h.end(), h.begin(), ::tolower);
+            if (deduped.find(h) == deduped.end() || t.seeders > deduped[h].seeders) {
+                deduped[h] = t;
+            }
+        }
+        results.clear();
+        for (const auto& [h, tq] : deduped) results.push_back(tq);
+        std::sort(results.begin(), results.end(), [](const TorrentQuality& a, const TorrentQuality& b){
+            return a.seeders > b.seeders;
+        });
+
+        spdlog::info("fetchEpisodeTorrents: {} for {} S{:02d}E{:02d}", results.size(), imdb_id, season, episode);
         return results;
     }
 

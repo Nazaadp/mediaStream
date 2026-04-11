@@ -171,6 +171,58 @@ namespace media::services {
         return std::nullopt;
     }
 
+    // Fetch torrents for a specific IMDB ID + season + episode.
+    // EZTV supports ?imdb_id={numeric} — we filter by S/E from the title client-side.
+    std::vector<TorrentQuality> EZTVClient::fetchEpisodeTorrents(
+        const std::string& imdb_id, int season, int episode)
+    {
+        std::vector<TorrentQuality> results;
+        if (imdb_id.size() < 3) return results;
+
+        // Strip "tt" prefix and leading zeros for EZTV
+        std::string numeric_id = imdb_id;
+        if (numeric_id.substr(0, 2) == "tt") numeric_id = numeric_id.substr(2);
+        numeric_id = std::to_string(std::stoi(numeric_id)); // remove leading zeros
+
+        std::string url = m_impl->BASE_URL + "/get-torrents?imdb_id=" + numeric_id + "&limit=100";
+        spdlog::info("EZTV episode fetch: {}", url);
+        std::string response = httpGet(url);
+        if (response.empty()) return results;
+
+        try {
+            auto j = json::parse(response);
+            if (!j.contains("torrents")) return results;
+
+            // Build regex for S{season}E{episode} in the torrent title
+            char se_buf[32];
+            std::snprintf(se_buf, sizeof(se_buf), "[Ss]%02d[Ee]%02d", season, episode);
+            std::regex se_re(se_buf);
+
+            for (const auto& t : j["torrents"]) {
+                std::string title = t.value("title", "");
+                if (!std::regex_search(title, se_re)) continue;
+
+                TorrentQuality tq;
+                tq.quality = title;
+                tq.type = "EZTV";
+                if (t["size_bytes"].is_string()) {
+                    tq.size_bytes = std::stoull(t["size_bytes"].get<std::string>());
+                } else if (t["size_bytes"].is_number()) {
+                    tq.size_bytes = t["size_bytes"].get<int64_t>();
+                }
+                tq.hash = t.value("hash", "");
+                tq.seeders = t.value("seeds", 0);
+                tq.leechers = t.value("peers", 0);
+                tq.magnet_uri = t.value("magnet_url", "");
+                results.push_back(tq);
+            }
+            spdlog::info("EZTV: {} torrents for {} S{:02d}E{:02d}", results.size(), imdb_id, season, episode);
+        } catch (const std::exception& e) {
+            spdlog::error("EZTV fetchEpisodeTorrents parse error: {}", e.what());
+        }
+        return results;
+    }
+
 } // namespace media::services
 
 // Made with Bob

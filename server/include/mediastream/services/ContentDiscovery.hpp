@@ -18,6 +18,24 @@ namespace media::services {
         int leechers;
     };
 
+    // Season summary (from TMDB)
+    struct SeasonInfo {
+        int season_number;
+        std::string name;
+        int episode_count;
+        std::string poster_url;
+    };
+
+    // Episode summary (from TMDB)
+    struct EpisodeInfo {
+        int episode_number;
+        int season_number;
+        std::string name;
+        std::string overview;
+        std::string still_url;
+        float rating;
+    };
+
     // Discovered Content Item
     struct DiscoveredContent {
         std::string title;
@@ -78,6 +96,9 @@ namespace media::services {
         std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") override;
         std::optional<DiscoveredContent> getById(const std::string& id) override;
 
+        // On-demand: torrents for a specific episode identified by IMDB ID
+        std::vector<TorrentQuality> fetchEpisodeTorrents(const std::string& imdb_id, int season, int episode, const std::string& title = "");
+
     private:
         class Impl;
         std::unique_ptr<Impl> m_impl;
@@ -92,6 +113,9 @@ namespace media::services {
         std::vector<DiscoveredContent> fetchPopular(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") override;
         std::vector<DiscoveredContent> search(const std::string& query, int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "") override;
         std::optional<DiscoveredContent> getById(const std::string& id) override;
+
+        // On-demand: torrents for a specific episode by title + episode number
+        std::vector<TorrentQuality> fetchEpisodeTorrents(const std::string& title, int episode);
 
     private:
         class Impl;
@@ -169,6 +193,15 @@ namespace media::services {
         std::vector<DiscoveredContent> fetchMovies(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "");
         std::vector<DiscoveredContent> fetchSeries(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "");
         std::vector<DiscoveredContent> fetchAnime(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "");
+
+        // On-demand movie torrents (called when user opens a movie card)
+        std::vector<TorrentQuality> fetchMovieTorrents(const std::string& imdb_id);
+
+        // On-demand episode navigation (called when user opens a series card)
+        std::vector<SeasonInfo>  fetchSeasons(const std::string& imdb_id);
+        std::vector<EpisodeInfo> fetchEpisodes(const std::string& imdb_id, int season);
+        // title is forwarded to Nyaa for anime episodes
+        std::vector<TorrentQuality> fetchEpisodeTorrents(const std::string& imdb_id, int season, int episode, const std::string& title = "");
 
     private:
         std::unique_ptr<YTSClient> m_yts;
