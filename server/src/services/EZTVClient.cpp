@@ -204,8 +204,12 @@ namespace media::services {
                 if (!std::regex_search(title, se_re)) continue;
 
                 TorrentQuality tq;
-                tq.quality = title;
-                tq.type = "EZTV";
+                tq.title   = title;
+                tq.quality = title; // keep quality in sync for legacy consumers
+                tq.type    = "EZTV";
+                tq.source  = "EZTV";
+                tq.audio_languages    = parseTorrentAudioLangs(title);
+                tq.subtitle_languages = parseTorrentSubtitleLangs(title);
                 if (t["size_bytes"].is_string()) {
                     tq.size_bytes = std::stoull(t["size_bytes"].get<std::string>());
                 } else if (t["size_bytes"].is_number()) {

@@ -261,8 +261,12 @@ namespace media::services {
                 if (!std::regex_search(full_title, ep_re)) continue;
 
                 TorrentQuality tq;
-                tq.quality = full_title;
-                tq.type = "Nyaa";
+                tq.title   = full_title;
+                tq.quality = full_title; // keep quality in sync for legacy consumers
+                tq.type    = "Nyaa";
+                tq.source  = "Nyaa";
+                tq.audio_languages    = "JA"; // Nyaa anime category: Japanese audio
+                tq.subtitle_languages = parseTorrentSubtitleLangs(full_title);
 
                 if (std::regex_search(item, m, seeders_re))  tq.seeders  = std::stoi(m[1].str());
                 if (std::regex_search(item, m, leechers_re)) tq.leechers = std::stoi(m[1].str());

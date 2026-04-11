@@ -140,14 +140,18 @@ namespace media::services {
                 for (const auto& stream : streams) {
                     if (stream.contains("infoHash")) {
                         TorrentQuality tq;
-                        
+
                         std::string full_title = stream.value("title", "");
-                        tq.quality = parseName(full_title);
-                        tq.type = parseSource(full_title);
+                        tq.title   = parseName(full_title);
+                        tq.quality = tq.title; // keep quality in sync for legacy consumers
+                        tq.source  = parseSource(full_title);
+                        tq.type    = tq.source;  // keep type in sync for legacy consumers
                         tq.hash = stream.value("infoHash", "");
                         tq.size_bytes = parseSizeStr(full_title);
                         tq.seeders = parseSeeders(full_title);
                         tq.leechers = 0; // Not provided by Torrentio
+                        tq.audio_languages    = parseTorrentAudioLangs(tq.title);
+                        tq.subtitle_languages = parseTorrentSubtitleLangs(tq.title);
 
                         // Assemble MagnetURI dynamically
                         std::ostringstream magnet;

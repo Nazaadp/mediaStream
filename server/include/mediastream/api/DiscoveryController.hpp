@@ -150,13 +150,17 @@ public:
             nlohmann::json arr = nlohmann::json::array();
             for (const auto& t : torrents) {
                 nlohmann::json tj;
-                tj["quality"]    = t.quality;
-                tj["type"]       = t.type;
-                tj["size_bytes"] = t.size_bytes;
-                tj["hash"]       = t.hash;
-                tj["magnet_uri"] = t.magnet_uri;
-                tj["seeders"]    = t.seeders;
-                tj["leechers"]   = t.leechers;
+                tj["quality"]             = t.quality;
+                tj["type"]               = t.type;
+                tj["title"]              = t.title;
+                tj["source"]             = t.source;
+                tj["audio_languages"]    = t.audio_languages;
+                tj["subtitle_languages"] = t.subtitle_languages;
+                tj["size_bytes"]         = t.size_bytes;
+                tj["hash"]               = t.hash;
+                tj["magnet_uri"]         = t.magnet_uri;
+                tj["seeders"]            = t.seeders;
+                tj["leechers"]           = t.leechers;
                 arr.push_back(tj);
             }
             auto response = createResponse(Status::CODE_200, arr.dump());
@@ -245,13 +249,17 @@ public:
             nlohmann::json arr = nlohmann::json::array();
             for (const auto& t : torrents) {
                 nlohmann::json tj;
-                tj["quality"]    = t.quality;
-                tj["type"]       = t.type;
-                tj["size_bytes"] = t.size_bytes;
-                tj["hash"]       = t.hash;
-                tj["magnet_uri"] = t.magnet_uri;
-                tj["seeders"]    = t.seeders;
-                tj["leechers"]   = t.leechers;
+                tj["quality"]             = t.quality;
+                tj["type"]               = t.type;
+                tj["title"]              = t.title;
+                tj["source"]             = t.source;
+                tj["audio_languages"]    = t.audio_languages;
+                tj["subtitle_languages"] = t.subtitle_languages;
+                tj["size_bytes"]         = t.size_bytes;
+                tj["hash"]               = t.hash;
+                tj["magnet_uri"]         = t.magnet_uri;
+                tj["seeders"]            = t.seeders;
+                tj["leechers"]           = t.leechers;
                 arr.push_back(tj);
             }
             auto response = createResponse(Status::CODE_200, arr.dump());

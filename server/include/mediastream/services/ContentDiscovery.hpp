@@ -9,14 +9,95 @@ namespace media::services {
 
     // Torrent Quality Information
     struct TorrentQuality {
-        std::string quality;      // "720p", "1080p", "2160p"
-        std::string type;         // "web", "bluray"
-        int64_t size_bytes;
+        std::string quality;            // "720p", "1080p", "2160p"
+        std::string type;               // encode type or legacy source tag
+        std::string title;              // full torrent name / filename
+        std::string source;             // "YTS", "TorrentGalaxy", "EZTV", "Nyaa", etc.
+        std::string audio_languages;    // "EN", "FR", "EN/FR", "MULTI", "N/A"
+        std::string subtitle_languages; // "N/A", "EN", "FR", "MULTI"
+        int64_t size_bytes{0};
         std::string magnet_uri;
         std::string hash;
-        int seeders;
-        int leechers;
+        int seeders{0};
+        int leechers{0};
     };
+
+    // ── Torrent name language helpers (used by all clients) ──────────────────
+
+    inline std::string parseTorrentAudioLangs(const std::string& name) {
+        std::string n = name;
+        std::transform(n.begin(), n.end(), n.begin(), ::toupper);
+        for (auto& c : n) if (c == '.' || c == '_' || c == '-') c = ' ';
+        n = " " + n + " ";
+
+        if (n.find(" MULTI ") != std::string::npos ||
+            n.find(" MULTI AUDIO") != std::string::npos) return "MULTI";
+        if (n.find(" DUAL ") != std::string::npos ||
+            n.find(" DUAL AUDIO") != std::string::npos) return "DUAL";
+
+        // French-only dubs
+        if (n.find(" FRENCH ") != std::string::npos ||
+            n.find(" TRUEFRENCH ") != std::string::npos ||
+            n.find(" VF ") != std::string::npos ||
+            n.find(" VFHQ ") != std::string::npos) return "FR";
+
+        // VOSTFR = original audio + FR subs → keep audio as EN (or JA for anime)
+        bool vostfr = (n.find("VOSTFR") != std::string::npos);
+
+        std::string langs = "EN";
+        if (!vostfr) {
+            if (n.find(" SPANISH ") != std::string::npos ||
+                n.find(" ESP ") != std::string::npos) langs += "/ES";
+            if (n.find(" GERMAN ") != std::string::npos ||
+                n.find(" GER ") != std::string::npos) langs += "/DE";
+            if (n.find(" PORTUGUESE ") != std::string::npos ||
+                n.find(" POR ") != std::string::npos) langs += "/PT";
+            if (n.find(" ITALIAN ") != std::string::npos ||
+                n.find(" ITA ") != std::string::npos) langs += "/IT";
+            if (n.find(" JAPANESE ") != std::string::npos ||
+                n.find(" JPN ") != std::string::npos) langs += "/JA";
+            if (n.find(" KOREAN ") != std::string::npos ||
+                n.find(" KOR ") != std::string::npos) langs += "/KO";
+            if (n.find(" RUSSIAN ") != std::string::npos ||
+                n.find(" RUS ") != std::string::npos) langs += "/RU";
+            if (n.find(" HINDI ") != std::string::npos) langs += "/HI";
+            if (n.find(" ARABIC ") != std::string::npos) langs += "/AR";
+            if (n.find(" TURKISH ") != std::string::npos) langs += "/TR";
+        }
+        return langs;
+    }
+
+    inline std::string parseTorrentSubtitleLangs(const std::string& name) {
+        std::string n = name;
+        std::transform(n.begin(), n.end(), n.begin(), ::toupper);
+        for (auto& c : n) if (c == '.' || c == '_') c = ' ';
+        n = " " + n + " ";
+
+        if (n.find(" MULTI SUB") != std::string::npos) return "MULTI";
+
+        // Streaming sources typically include multi-language subtitles
+        if (n.find(" NF ") != std::string::npos  || n.find("-NF ")   != std::string::npos ||
+            n.find(" AMZN ") != std::string::npos || n.find("-AMZN ") != std::string::npos ||
+            n.find(" DSNP ") != std::string::npos || n.find(" HMAX ") != std::string::npos ||
+            n.find(" ATVP ") != std::string::npos || n.find(" PCOK ") != std::string::npos) {
+            return "MULTI";
+        }
+        if (n.find("VOSTFR") != std::string::npos ||
+            n.find(" SUBFRENCH") != std::string::npos) return "FR";
+        if (n.find(" SUBBED") != std::string::npos ||
+            n.find(" ENGSUB") != std::string::npos ||
+            n.find(" ENG SUB") != std::string::npos) return "EN";
+
+        return "N/A";
+    }
+
+    // Map an ISO 639-1 language code (lowercase, e.g. "en", "fr") to uppercase display.
+    inline std::string isoToDisplayLang(const std::string& code) {
+        if (code.empty()) return "EN";
+        std::string up = code;
+        std::transform(up.begin(), up.end(), up.begin(), ::toupper);
+        return up;
+    }
 
     // Season summary (from TMDB)
     struct SeasonInfo {
