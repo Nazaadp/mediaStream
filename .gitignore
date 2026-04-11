@@ -17,19 +17,18 @@ quick-start-vm.sh
 /clientTauri/CLIENT_AUDIT.md
 /rattin-temp
 fix_database.py
+/CURRENT_STATE.md
+MIGRATION_PLAN.md
 
 
-# Tauri / Frontend
+# Tauri / Frontend / Flutter
+/client_flutter
+/clientTauri
 /clientTauri/node_modules
 /clientTauri/src-tauri/target
 /clientTauri/.svelte-kit
 /clientTauri/dist
-/clientTauri
 
-
-# Flutter Client
 
 *.png
 CONTEXT.md
-
-/client_flutter
