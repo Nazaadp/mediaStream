@@ -24,6 +24,12 @@ fix_database.py
 /clientTauri/src-tauri/target
 /clientTauri/.svelte-kit
 /clientTauri/dist
+/clientTauri
+
+
+# Flutter Client
 
 *.png
 CONTEXT.md
+
+/client_flutter
