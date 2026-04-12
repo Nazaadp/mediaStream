@@ -31,41 +31,56 @@ namespace media::services {
         for (auto& c : n) if (c == '.' || c == '_' || c == '-') c = ' ';
         n = " " + n + " ";
 
-        if (n.find(" MULTI ") != std::string::npos ||
-            n.find(" MULTI AUDIO") != std::string::npos) return "MULTI";
-        if (n.find(" DUAL ") != std::string::npos ||
-            n.find(" DUAL AUDIO") != std::string::npos) return "DUAL";
-
-        // French-only dubs
-        if (n.find(" FRENCH ") != std::string::npos ||
-            n.find(" TRUEFRENCH ") != std::string::npos ||
-            n.find(" VF ") != std::string::npos ||
-            n.find(" VFHQ ") != std::string::npos) return "FR";
-
-        // VOSTFR = original audio + FR subs → keep audio as EN (or JA for anime)
         bool vostfr = (n.find("VOSTFR") != std::string::npos);
+        std::string result = vostfr ? "" : "EN";
 
-        std::string langs = "EN";
-        if (!vostfr) {
-            if (n.find(" SPANISH ") != std::string::npos ||
-                n.find(" ESP ") != std::string::npos) langs += "/ES";
-            if (n.find(" GERMAN ") != std::string::npos ||
-                n.find(" GER ") != std::string::npos) langs += "/DE";
-            if (n.find(" PORTUGUESE ") != std::string::npos ||
-                n.find(" POR ") != std::string::npos) langs += "/PT";
-            if (n.find(" ITALIAN ") != std::string::npos ||
-                n.find(" ITA ") != std::string::npos) langs += "/IT";
-            if (n.find(" JAPANESE ") != std::string::npos ||
-                n.find(" JPN ") != std::string::npos) langs += "/JA";
-            if (n.find(" KOREAN ") != std::string::npos ||
-                n.find(" KOR ") != std::string::npos) langs += "/KO";
-            if (n.find(" RUSSIAN ") != std::string::npos ||
-                n.find(" RUS ") != std::string::npos) langs += "/RU";
-            if (n.find(" HINDI ") != std::string::npos) langs += "/HI";
-            if (n.find(" ARABIC ") != std::string::npos) langs += "/AR";
-            if (n.find(" TURKISH ") != std::string::npos) langs += "/TR";
+        // Collect language tags in order
+        if (n.find(" FRENCH ") != std::string::npos || n.find(" TRUEFRENCH ") != std::string::npos ||
+            n.find(" VF ") != std::string::npos || n.find(" VFHQ ") != std::string::npos) {
+            if (result.find("FR") == std::string::npos) result += (result.empty() ? "FR" : "/FR");
         }
-        return langs;
+        if (n.find(" SPANISH ") != std::string::npos || n.find(" ESP ") != std::string::npos) {
+            if (result.find("ES") == std::string::npos) result += (result.empty() ? "ES" : "/ES");
+        }
+        if (n.find(" GERMAN ") != std::string::npos || n.find(" GER ") != std::string::npos) {
+            if (result.find("DE") == std::string::npos) result += (result.empty() ? "DE" : "/DE");
+        }
+        if (n.find(" PORTUGUESE ") != std::string::npos || n.find(" POR ") != std::string::npos) {
+            if (result.find("PT") == std::string::npos) result += (result.empty() ? "PT" : "/PT");
+        }
+        if (n.find(" ITALIAN ") != std::string::npos || n.find(" ITA ") != std::string::npos) {
+            if (result.find("IT") == std::string::npos) result += (result.empty() ? "IT" : "/IT");
+        }
+        if (n.find(" JAPANESE ") != std::string::npos || n.find(" JPN ") != std::string::npos) {
+            if (result.find("JA") == std::string::npos) result += (result.empty() ? "JA" : "/JA");
+        }
+        if (n.find(" KOREAN ") != std::string::npos || n.find(" KOR ") != std::string::npos) {
+            if (result.find("KO") == std::string::npos) result += (result.empty() ? "KO" : "/KO");
+        }
+        if (n.find(" RUSSIAN ") != std::string::npos || n.find(" RUS ") != std::string::npos) {
+            if (result.find("RU") == std::string::npos) result += (result.empty() ? "RU" : "/RU");
+        }
+        if (n.find(" HINDI ") != std::string::npos) {
+            if (result.find("HI") == std::string::npos) result += (result.empty() ? "HI" : "/HI");
+        }
+        if (n.find(" ARABIC ") != std::string::npos) {
+            if (result.find("AR") == std::string::npos) result += (result.empty() ? "AR" : "/AR");
+        }
+        if (n.find(" TURKISH ") != std::string::npos) {
+            if (result.find("TR") == std::string::npos) result += (result.empty() ? "TR" : "/TR");
+        }
+
+        // If no specific languages found, check for MULTI/DUAL tags
+        if (result.empty() || result == "EN") {
+            if (n.find(" MULTI ") != std::string::npos || n.find(" MULTI AUDIO") != std::string::npos) {
+                return "MULTI";
+            }
+            if (n.find(" DUAL ") != std::string::npos || n.find(" DUAL AUDIO") != std::string::npos) {
+                return "DUAL";
+            }
+        }
+
+        return result.empty() ? "EN" : result;
     }
 
     inline std::string parseTorrentSubtitleLangs(const std::string& name) {
