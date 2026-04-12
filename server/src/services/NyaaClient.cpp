@@ -110,6 +110,8 @@ namespace media::services {
                     TorrentQuality tq;
                     tq.quality = "1080p"; // Default assumption
                     tq.type = "Nyaa";
+                    tq.audio_languages    = parseNyaaAudioLangs(full_title);
+                    tq.subtitle_languages = parseTorrentSubtitleLangs(full_title);
                     
                     if (std::regex_search(item_content, seeders_match, seeders_regex)) {
                         tq.seeders = std::stoi(seeders_match[1].str());
@@ -265,7 +267,7 @@ namespace media::services {
                 tq.quality = full_title; // keep quality in sync for legacy consumers
                 tq.type    = "Nyaa";
                 tq.source  = "Nyaa";
-                tq.audio_languages    = "JA"; // Nyaa anime category: Japanese audio
+                tq.audio_languages    = parseNyaaAudioLangs(full_title);
                 tq.subtitle_languages = parseTorrentSubtitleLangs(full_title);
 
                 if (std::regex_search(item, m, seeders_re))  tq.seeders  = std::stoi(m[1].str());

@@ -107,6 +107,22 @@ namespace media::services {
         return "N/A";
     }
 
+    // Nyaa-specific audio language parser.
+    // Nyaa c=1_2 (English-translated anime) is Japanese audio by default.
+    // Detects [Dual-Audio] / Dual.Audio → "JA/EN", Multi → "MULTI".
+    inline std::string parseNyaaAudioLangs(const std::string& name) {
+        std::string n = name;
+        std::transform(n.begin(), n.end(), n.begin(), ::toupper);
+        for (auto& c : n) if (c == '.' || c == '_' || c == '-') c = ' ';
+        n = " " + n + " ";
+
+        // MULTI overrides DUAL
+        if (n.find(" MULTI") != std::string::npos) return "MULTI";
+        // "DUAL AUDIO" covers [Dual-Audio], Dual.Audio, [Dual Audio] after normalization
+        if (n.find("DUAL AUDIO") != std::string::npos || n.find(" DUAL ") != std::string::npos) return "JA/EN";
+        return "JA";
+    }
+
     // Map an ISO 639-1 language code (lowercase, e.g. "en", "fr") to uppercase display.
     inline std::string isoToDisplayLang(const std::string& code) {
         if (code.empty()) return "EN";
