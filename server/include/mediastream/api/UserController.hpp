@@ -34,6 +34,7 @@ private:
             root["imdb_id"] = m.imdb_id;
             root["tmdb_id"] = m.tmdb_id;
             root["language"] = m.language;
+            root["original_language"] = m.original_language;
             root["type"] = media::database::contentTypeToString(m.type);
             
             // Add view_later and specific watch history data if needed, 
@@ -73,12 +74,26 @@ private:
         m.imdb_id = j.value("imdb_id", "");
         m.tmdb_id = j.value("tmdb_id", "");
         m.language = j.value("language", "en");
-        
+        m.original_language = j.value("original_language", "");
+
         std::string typeStr = j.value("type", "MOVIE");
-        if (typeStr == "SERIES") m.type = media::database::ContentType::SERIES;
-        else if (typeStr == "ANIME") m.type = media::database::ContentType::ANIME;
-        else m.type = media::database::ContentType::MOVIE;
-        
+        if (typeStr == "ANIME") {
+            m.type = media::database::ContentType::ANIME;
+        } else if (typeStr == "SERIES") {
+            m.type = media::database::ContentType::SERIES;
+        } else if (typeStr == "tv") {
+            // TMDB/Cinemeta-style: distinguish anime by original_language
+            const auto& lang = m.original_language;
+            if (lang == "ja" || lang == "ko" || lang == "zh") {
+                m.type = media::database::ContentType::ANIME;
+            } else {
+                m.type = media::database::ContentType::SERIES;
+            }
+        } else {
+            // 'movie', 'MOVIE', or unknown → MOVIE
+            m.type = media::database::ContentType::MOVIE;
+        }
+
         return m;
     }
 

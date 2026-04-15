@@ -10,17 +10,30 @@ namespace media::services {
 
     // Torrent Quality Information
     struct TorrentQuality {
-        std::string quality;            // "720p", "1080p", "2160p"
+        // ── Existing fields ────────────────────────────────────────────────────
+        std::string quality;            // "720p", "1080p", "2160p" (or parsed)
         std::string type;               // encode type or legacy source tag
-        std::string title;              // full torrent name / filename
-        std::string source;             // "YTS", "TorrentGalaxy", "EZTV", "Nyaa", etc.
+        std::string title;              // display name (1st line for Torrentio)
+        std::string source;             // "YTS", "TorrentGalaxy", "EZTV", "NyaaSi", etc.
         std::string audio_languages;    // "EN", "FR", "EN/FR", "MULTI", "N/A"
         std::string subtitle_languages; // "N/A", "EN", "FR", "MULTI"
-        int64_t size_bytes{0};
+        int64_t     size_bytes{0};
         std::string magnet_uri;
         std::string hash;
-        int seeders{0};
-        int leechers{0};
+        int         seeders{0};
+        int         leechers{0};
+
+        // ── Parsed metadata (populated by TorrentScorer::enrich) ──────────────
+        int         resolution_p{0};   // 4320, 2160, 1080, 720, 576, 480; 0=unknown
+        std::string codec;             // "AV1", "HEVC", "x264", "XviD", ""
+        bool        is_hdr{false};     // HDR or HDR10 present
+        bool        is_hdr10{false};   // HDR10 specifically
+        bool        is_dv{false};      // Dolby Vision
+        bool        is_remux{false};   // REMUX / BDRemux
+        bool        is_bluray{false};  // BluRay / BDRip source
+        bool        is_webdl{false};   // WEB-DL / WEBMux
+        bool        is_cam{false};     // CAM / TS / TeleSync — garbage tier
+        int         score{0};          // Computed quality score (higher = better)
     };
 
     // ── Torrent name language helpers (used by all clients) ──────────────────

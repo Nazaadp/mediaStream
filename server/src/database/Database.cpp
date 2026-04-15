@@ -25,6 +25,7 @@ class MediaItemDto : public oatpp::DTO {
     DTO_FIELD(String, tmdb_id);
     DTO_FIELD(String, imdb_id);
     DTO_FIELD(String, language);
+    DTO_FIELD(String, original_language);
     DTO_FIELD(Int64, created_at);
     DTO_FIELD(Int64, updated_at);
 };
@@ -156,6 +157,7 @@ public:
             item.tmdb_id = row->tmdb_id ? *row->tmdb_id : "";
             item.imdb_id = row->imdb_id ? *row->imdb_id : "";
             item.language = row->language ? *row->language : "";
+            item.original_language = row->original_language ? *row->original_language : "";
             item.created_at = row->created_at ? *row->created_at : 0;
             item.updated_at = row->updated_at ? *row->updated_at : 0;
             return item;
@@ -250,6 +252,7 @@ public:
                 tmdb_id TEXT,
                 imdb_id TEXT,
                 language TEXT DEFAULT 'en',
+                original_language TEXT DEFAULT '',
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             )
@@ -332,6 +335,11 @@ public:
         m_impl->executeSQL("CREATE INDEX IF NOT EXISTS idx_view_later_media ON view_later(media_id)");
         m_impl->executeSQL("CREATE INDEX IF NOT EXISTS idx_episodes_media ON episodes(media_id)");
 
+        // Add original_language to media_items if missing (migration for existing DBs)
+        try {
+            m_impl->executeSQL("ALTER TABLE media_items ADD COLUMN original_language TEXT DEFAULT ''");
+        } catch (...) {}
+
         // Try to add the 'type' column to torrents table if it already exists (migration)
         try {
             m_impl->executeSQL("ALTER TABLE torrents ADD COLUMN type TEXT");
@@ -352,9 +360,9 @@ public:
         auto now = std::chrono::system_clock::now().time_since_epoch().count();
         
         auto result = m_impl->client->executeQuery(oatpp::String("INSERT INTO media_items (type, title, original_title, year, description, poster_url, "
-            "backdrop_url, rating, genres, runtime_minutes, tmdb_id, imdb_id, language, created_at, updated_at) "
+            "backdrop_url, rating, genres, runtime_minutes, tmdb_id, imdb_id, language, original_language, created_at, updated_at) "
             "VALUES (:type, :title, :original_title, :year, :description, :poster_url, "
-            ":backdrop_url, :rating, :genres, :runtime_minutes, :tmdb_id, :imdb_id, :language, :created_at, :updated_at)"), std::unordered_map<oatpp::String, oatpp::Void>{
+            ":backdrop_url, :rating, :genres, :runtime_minutes, :tmdb_id, :imdb_id, :language, :original_language, :created_at, :updated_at)"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"type", oatpp::String(contentTypeToString(item.type))},
                 {"title", oatpp::String(item.title)},
                 {"original_title", oatpp::String(item.original_title)},
@@ -368,6 +376,7 @@ public:
                 {"tmdb_id", item.tmdb_id.empty() ? oatpp::String() : oatpp::String(item.tmdb_id)},
                 {"imdb_id", item.imdb_id.empty() ? oatpp::String() : oatpp::String(item.imdb_id)},
                 {"language", oatpp::String(item.language)},
+                {"original_language", oatpp::String(item.original_language)},
                 {"created_at", oatpp::Int64(now)},
                 {"updated_at", oatpp::Int64(now)}
             });
@@ -408,13 +417,29 @@ public:
     }
 
     int Database::upsertMediaItem(const MediaItem& item) {
+        auto now = std::chrono::system_clock::now().time_since_epoch().count();
+
+        // Helper lambda: update type + original_language on an existing record so
+        // that items previously stored with wrong type get corrected on next save.
+        auto fixType = [&](int existing_id) {
+            m_impl->client->executeQuery(
+                oatpp::String("UPDATE media_items SET type = :type, original_language = :original_language, updated_at = :updated_at WHERE id = :id"),
+                std::unordered_map<oatpp::String, oatpp::Void>{
+                    {"type",              oatpp::String(contentTypeToString(item.type))},
+                    {"original_language", oatpp::String(item.original_language)},
+                    {"updated_at",        oatpp::Int64(now)},
+                    {"id",                oatpp::Int32(existing_id)},
+                });
+            return existing_id;
+        };
+
         if (!item.tmdb_id.empty()) {
             auto existing = getMediaItemByTmdbId(item.tmdb_id);
-            if (existing) return existing->id;
+            if (existing) return fixType(existing->id);
         }
         if (!item.imdb_id.empty()) {
             auto existing = getMediaItemByImdbId(item.imdb_id);
-            if (existing) return existing->id;
+            if (existing) return fixType(existing->id);
         }
 
         // Also fallback to checking Title AND Year as a last resort UNIQUE check
@@ -424,12 +449,12 @@ public:
         });
         if (result->isSuccess()) {
             auto dataset = result->fetch<oatpp::Vector<oatpp::Object<IntResultDto>>>();
-            if (dataset && dataset->size() > 0) {
-                return dataset->front()->value ? *dataset->front()->value : 0;
+            if (dataset && dataset->size() > 0 && dataset->front()->value) {
+                return fixType(*dataset->front()->value);
             }
         }
 
-        // If not found, insert
+        // Not found — insert new record
         return insertMediaItem(item);
     }
 

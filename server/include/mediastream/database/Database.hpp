@@ -44,6 +44,7 @@ namespace media::database {
         std::string tmdb_id;
         std::string imdb_id;
         std::string language;
+        std::string original_language;
         int64_t created_at;
         int64_t updated_at;
     };
