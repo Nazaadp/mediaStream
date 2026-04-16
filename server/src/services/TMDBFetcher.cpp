@@ -206,6 +206,7 @@ namespace media::services {
                 si.season_number = sn;
                 si.name = s.value("name", "Season " + std::to_string(sn));
                 si.episode_count = s.value("episode_count", 0);
+                si.rating = s.value("vote_average", 0.0f);
                 if (s.contains("poster_path") && s["poster_path"].is_string()) {
                     si.poster_url = IMG_BASE + s["poster_path"].get<std::string>();
                 }
@@ -261,6 +262,48 @@ namespace media::services {
             spdlog::error("fetchEpisodes failed for {} S{}: {}", imdb_id, season, e.what());
         }
         return results;
+    }
+
+    std::string TMDBFetcher::fetchGenres(const std::string& imdb_id) {
+        if (m_impl->m_api_key.empty() || imdb_id.empty()) return "";
+        try {
+            // Step 1: resolve IMDB ID → TMDB ID + type
+            std::string find_url = m_impl->BASE_URL + "/find/" + imdb_id + "?external_source=imdb_id&language=en-US";
+            std::string find_res = tmdbHttpGet(find_url, m_impl->m_api_key);
+            if (find_res.empty()) return "";
+
+            auto fj = json::parse(find_res);
+            std::string tmdb_id;
+            std::string media_type;
+            if (fj.contains("movie_results") && !fj["movie_results"].empty()) {
+                tmdb_id = std::to_string(fj["movie_results"][0].value("id", 0));
+                media_type = "movie";
+            } else if (fj.contains("tv_results") && !fj["tv_results"].empty()) {
+                tmdb_id = std::to_string(fj["tv_results"][0].value("id", 0));
+                media_type = "tv";
+            }
+            if (tmdb_id.empty() || tmdb_id == "0") return "";
+
+            // Step 2: fetch full details — returns genres array with names
+            std::string detail_url = m_impl->BASE_URL + "/" + media_type + "/" + tmdb_id + "?language=en-US";
+            std::string detail_res = tmdbHttpGet(detail_url, m_impl->m_api_key);
+            if (detail_res.empty()) return "";
+
+            auto dj = json::parse(detail_res);
+            if (!dj.contains("genres")) return "";
+
+            std::string result;
+            for (const auto& g : dj["genres"]) {
+                if (!g.contains("name")) continue;
+                if (!result.empty()) result += ", ";
+                result += g["name"].get<std::string>();
+            }
+            spdlog::info("fetchGenres: {} for {}", result, imdb_id);
+            return result;
+        } catch (const std::exception& e) {
+            spdlog::error("fetchGenres failed for {}: {}", imdb_id, e.what());
+            return "";
+        }
     }
 
 } // namespace media::services

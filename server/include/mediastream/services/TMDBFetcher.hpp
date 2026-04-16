@@ -18,6 +18,9 @@ namespace media::services {
         // On-demand season/episode data for series navigation
         std::vector<SeasonInfo>  fetchSeasons(const std::string& imdb_id);
         std::vector<EpisodeInfo> fetchEpisodes(const std::string& imdb_id, int season);
+
+        // On-demand genres fetched from full movie/tv details endpoint
+        std::string fetchGenres(const std::string& imdb_id);
         
     private:
         class Impl;

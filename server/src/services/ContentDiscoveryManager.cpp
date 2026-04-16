@@ -332,6 +332,10 @@ namespace media::services {
         return m_tmdb->fetchEpisodes(imdb_id, season);
     }
 
+    std::string ContentDiscoveryManager::fetchGenres(const std::string& imdb_id) {
+        return m_tmdb->fetchGenres(imdb_id);
+    }
+
     std::vector<TorrentQuality> ContentDiscoveryManager::fetchEpisodeTorrents(
         const std::string& imdb_id, int season, int episode, const std::string& title)
     {

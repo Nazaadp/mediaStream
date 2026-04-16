@@ -150,6 +150,7 @@ namespace media::services {
         std::string name;
         int episode_count;
         std::string poster_url;
+        float rating = 0.0f;
     };
 
     // Episode summary (from TMDB)
@@ -328,6 +329,9 @@ namespace media::services {
         std::vector<EpisodeInfo> fetchEpisodes(const std::string& imdb_id, int season);
         // title is forwarded to Nyaa for anime episodes
         std::vector<TorrentQuality> fetchEpisodeTorrents(const std::string& imdb_id, int season, int episode, const std::string& title = "");
+
+        // On-demand genres (called when user opens a media card)
+        std::string fetchGenres(const std::string& imdb_id);
 
     private:
         std::unique_ptr<YTSClient> m_yts;

@@ -189,6 +189,7 @@ public:
                 sj["name"]           = s.name;
                 sj["episode_count"]  = s.episode_count;
                 sj["poster_url"]     = s.poster_url;
+                sj["rating"]         = s.rating;
                 arr.push_back(sj);
             }
             auto response = createResponse(Status::CODE_200, arr.dump());
@@ -196,6 +197,27 @@ public:
             return response;
         } catch (const std::exception& e) {
             spdlog::error("getSeasons error: {}", e.what());
+            return createResponse(Status::CODE_500, "Internal Server Error");
+        }
+    }
+
+    ENDPOINT_INFO(getGenres) {
+        info->summary = "Get genre list for a title by IMDB ID";
+    }
+    ENDPOINT("GET", "/api/v1/discover/genres", getGenres, REQUEST(std::shared_ptr<IncomingRequest>, request)) {
+        try {
+            auto id = request->getQueryParameter("imdb_id");
+            if (!id) return createResponse(Status::CODE_400, "Missing imdb_id");
+
+            auto genres = m_discovery->fetchGenres(id->c_str());
+
+            nlohmann::json obj;
+            obj["genres"] = genres;
+            auto response = createResponse(Status::CODE_200, obj.dump());
+            response->putHeader("Content-Type", "application/json");
+            return response;
+        } catch (const std::exception& e) {
+            spdlog::error("getGenres error: {}", e.what());
             return createResponse(Status::CODE_500, "Internal Server Error");
         }
     }
