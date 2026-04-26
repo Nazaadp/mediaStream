@@ -23,7 +23,6 @@ MIGRATION_PLAN.md
 
 
 # Tauri / Frontend / Flutter
-/client_flutter
 /clientTauri
 /clientTauri/node_modules
 /clientTauri/src-tauri/target

@@ -83,7 +83,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(mediastream_server PRIVATE ${HARDENING_FLAGS})
     
     # Linker Hardening: Read-Only Relocations (RELRO) and Bind Now
-    target_link_options(mediastream_server PRIVATE "-pie" "-Wl,-z,relro" "-Wl,-z,now")
+    target_link_options(mediastream_server PRIVATE "-pie" "-Wl,-z,relro" "-Wl,-z,now" "-Wl,-z,noexecstack")
 endif()
 
 #    target_compile_options(mediastream_server PRIVATE -Wall -Wextra -Wpedantic -Werror)
