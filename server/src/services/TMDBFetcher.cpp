@@ -28,7 +28,9 @@ namespace media::services {
             curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, TMDBWriteCallback);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L); 
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+            curl_easy_setopt(curl, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
             curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
             curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
 
