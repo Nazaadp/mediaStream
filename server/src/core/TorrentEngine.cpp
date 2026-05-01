@@ -54,9 +54,12 @@ namespace media::core {
         // 2. Configure Settings
         lt::settings_pack p;
         
-        // Security: Force Encryption (RC4)
-        p.set_int(lt::settings_pack::out_enc_policy, lt::settings_pack::pe_forced);
-        p.set_int(lt::settings_pack::in_enc_policy, lt::settings_pack::pe_forced);
+        // Prefer encryption, fall back to plaintext for peers without RC4 support.
+        // pe_forced cuts the peer pool drastically — many public-swarm peers
+        // negotiate plaintext only, so pe_enabled keeps connectivity high while
+        // still upgrading every link that supports it.
+        p.set_int(lt::settings_pack::out_enc_policy, lt::settings_pack::pe_enabled);
+        p.set_int(lt::settings_pack::in_enc_policy, lt::settings_pack::pe_enabled);
         p.set_int(lt::settings_pack::allowed_enc_level, lt::settings_pack::pe_both);
 
         // Resource Limits
