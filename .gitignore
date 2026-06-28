@@ -32,3 +32,6 @@ MIGRATION_PLAN.md
 
 *.png
 CONTEXT.md
+*.md
+*.json
+quick-build.sh

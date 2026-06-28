@@ -108,6 +108,7 @@ namespace media::services {
         if (skip > 0) url += "/skip=" + std::to_string(skip);
         url += ".json";
         std::string response = cmHttpGet(url);
+        spdlog::info("=== RAW RESPONSE [MOVIES / Cinemeta] {} ===\n{}\n=== END RAW RESPONSE [MOVIES / Cinemeta] ===", url, response);
         return m_impl->parseMetas(response, "Cinemeta");
     }
 
@@ -118,6 +119,7 @@ namespace media::services {
         if (skip > 0) url += "/skip=" + std::to_string(skip);
         url += ".json";
         std::string response = cmHttpGet(url);
+        spdlog::info("=== RAW RESPONSE [SERIES / Cinemeta] {} ===\n{}\n=== END RAW RESPONSE [SERIES / Cinemeta] ===", url, response);
         return m_impl->parseMetas(response, "Cinemeta");
     }
 

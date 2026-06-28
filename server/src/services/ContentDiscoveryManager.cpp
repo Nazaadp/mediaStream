@@ -8,7 +8,12 @@
 
 namespace media::services {
 
-    ContentDiscoveryManager::ContentDiscoveryManager() 
+    // Max torrents returned per movie/episode request. Capped after scoring so
+    // we keep the best-ranked results while limiting serialized output and the
+    // volume of torrents the client must process. Tune as needed.
+    static constexpr size_t MAX_TORRENTS_PER_ITEM = 10;
+
+    ContentDiscoveryManager::ContentDiscoveryManager()
         : m_yts(std::make_unique<YTSClient>())
         , m_eztv(std::make_unique<EZTVClient>())
         , m_nyaa(std::make_unique<NyaaClient>())
@@ -262,6 +267,9 @@ namespace media::services {
         // and drop CAM/TS rips. Torrents were enriched per-source by each client.
         TorrentScorer::scoreAndSort(results);
 
+        // Keep only the top-ranked torrents to bound output and log volume.
+        if (results.size() > MAX_TORRENTS_PER_ITEM) results.resize(MAX_TORRENTS_PER_ITEM);
+
         spdlog::info("fetchMovieTorrents: {} for {}", results.size(), imdb_id);
         return results;
     }
@@ -374,6 +382,9 @@ namespace media::services {
 
         // Rank by parsed quality + seeder curve, drop CAM/TS. Per-source enriched.
         TorrentScorer::scoreAndSort(results);
+
+        // Keep only the top-ranked torrents to bound output and log volume.
+        if (results.size() > MAX_TORRENTS_PER_ITEM) results.resize(MAX_TORRENTS_PER_ITEM);
 
         spdlog::info("fetchEpisodeTorrents: {} for {} S{:02d}E{:02d}", results.size(), imdb_id, season, episode);
         return results;

@@ -41,6 +41,7 @@ namespace media::services {
             curl_easy_cleanup(curl);
         }
 
+        spdlog::info("=== RAW RESPONSE [YTS] {} ===\n{}\n=== END RAW RESPONSE [YTS] ===", url, response);
         return response;
     }
 

@@ -142,19 +142,23 @@ namespace media::services {
         std::string url = m_impl->BASE_URL + "/discover/movie?language=en-US&sort_by=popularity.desc&page=" + std::to_string(page);
         if (!genre.empty()) url += "&with_genres=" + genre;
         if (!language.empty()) url += "&with_original_language=" + language;
-        
-        return m_impl->parseResults(tmdbCatHttpGet(url, m_impl->m_api_key), "TMDB");
+
+        std::string response = tmdbCatHttpGet(url, m_impl->m_api_key);
+        spdlog::info("=== RAW RESPONSE [MOVIES / TMDB] {} ===\n{}\n=== END RAW RESPONSE [MOVIES / TMDB] ===", url, response);
+        return m_impl->parseResults(response, "TMDB");
     }
 
     std::vector<DiscoveredContent> TMDBCatalogClient::fetchSeries(int /*limit*/, int page, const std::string& genre, const std::string& language) {
         if (m_impl->m_api_key.empty()) return {};
         spdlog::info("Fetching popular series from TMDB (page {}, genre {}, lang {})...", page, genre, language);
-        
+
         std::string url = m_impl->BASE_URL + "/discover/tv?language=en-US&sort_by=popularity.desc&page=" + std::to_string(page);
         if (!genre.empty()) url += "&with_genres=" + genre;
         if (!language.empty()) url += "&with_original_language=" + language;
-        
-        return m_impl->parseResults(tmdbCatHttpGet(url, m_impl->m_api_key), "TMDB");
+
+        std::string response = tmdbCatHttpGet(url, m_impl->m_api_key);
+        spdlog::info("=== RAW RESPONSE [SERIES / TMDB] {} ===\n{}\n=== END RAW RESPONSE [SERIES / TMDB] ===", url, response);
+        return m_impl->parseResults(response, "TMDB");
     }
 
     std::vector<DiscoveredContent> TMDBCatalogClient::fetchAnime(int /*limit*/, int page, const std::string& genre, const std::string& language) {
@@ -163,10 +167,12 @@ namespace media::services {
         
         std::string url = m_impl->BASE_URL + "/discover/tv?with_genres=16&with_original_language=ja&sort_by=popularity.desc&page=" + std::to_string(page);
         // Note: TMDB anime fetch uses fixed genre 16 and JA. We can append additional filters if needed.
-        if (!genre.empty()) url += "&with_genres=" + genre; 
+        if (!genre.empty()) url += "&with_genres=" + genre;
         if (!language.empty()) url += "&with_original_language=" + language;
-        
-        return m_impl->parseResults(tmdbCatHttpGet(url, m_impl->m_api_key), "TMDB");
+
+        std::string response = tmdbCatHttpGet(url, m_impl->m_api_key);
+        spdlog::info("=== RAW RESPONSE [ANIME / TMDB] {} ===\n{}\n=== END RAW RESPONSE [ANIME / TMDB] ===", url, response);
+        return m_impl->parseResults(response, "TMDB");
     }
 
     std::vector<DiscoveredContent> TMDBCatalogClient::search(const std::string& query, int /*limit*/, int page, [[maybe_unused]] const std::string& genre, [[maybe_unused]] const std::string& language) {

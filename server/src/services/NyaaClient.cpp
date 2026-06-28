@@ -41,6 +41,7 @@ namespace media::services {
             curl_easy_cleanup(curl);
         }
 
+        spdlog::info("=== RAW RESPONSE [Nyaa] {} ===\n{}\n=== END RAW RESPONSE [Nyaa] ===", url, response);
         return response;
     }
 

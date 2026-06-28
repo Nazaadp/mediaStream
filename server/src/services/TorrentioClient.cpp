@@ -43,6 +43,7 @@ namespace media::services {
             curl_easy_cleanup(curl);
         }
 
+        spdlog::info("=== RAW RESPONSE [Torrentio] {} ===\n{}\n=== END RAW RESPONSE [Torrentio] ===", url, response);
         return response;
     }
 

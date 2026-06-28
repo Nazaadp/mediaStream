@@ -14,6 +14,11 @@ namespace media::api {
 
 class DiscoveryController : public oatpp::web::server::api::ApiController {
 private:
+    // Max catalog items returned per movies/series/anime/search request.
+    // Kept low to limit per-item TMDB enrichment calls and raw-response log
+    // volume during debugging. Bump back up once parsing work is done.
+    static constexpr int CATALOG_PAGE_LIMIT = 10;
+
     std::shared_ptr<media::services::ContentDiscoveryManager> m_discovery;
 
     oatpp::String serializeToJson(const std::vector<media::services::DiscoveredContent>& content_list) {
@@ -80,7 +85,7 @@ public:
             std::string genre = g ? g->c_str() : "";
             std::string language = l ? l->c_str() : "";
 
-            auto movies = m_discovery->fetchMovies(15, page, genre, language);
+            auto movies = m_discovery->fetchMovies(CATALOG_PAGE_LIMIT, page, genre, language);
             auto response = createResponse(Status::CODE_200, serializeToJson(movies));
             response->putHeader("Content-Type", "application/json");
             return response;
@@ -104,7 +109,7 @@ public:
             std::string genre = g ? g->c_str() : "";
             std::string language = l ? l->c_str() : "";
 
-            auto series = m_discovery->fetchSeries(15, page, genre, language);
+            auto series = m_discovery->fetchSeries(CATALOG_PAGE_LIMIT, page, genre, language);
             auto response = createResponse(Status::CODE_200, serializeToJson(series));
             response->putHeader("Content-Type", "application/json");
             return response;
@@ -128,7 +133,7 @@ public:
             std::string genre = g ? g->c_str() : "";
             std::string language = l ? l->c_str() : "";
 
-            auto anime = m_discovery->fetchAnime(15, page, genre, language);
+            auto anime = m_discovery->fetchAnime(CATALOG_PAGE_LIMIT, page, genre, language);
             auto response = createResponse(Status::CODE_200, serializeToJson(anime));
             response->putHeader("Content-Type", "application/json");
             return response;
@@ -319,7 +324,7 @@ public:
                 return createResponse(Status::CODE_400, "Missing query string");
             }
 
-            auto results = m_discovery->searchAll(query, 15);
+            auto results = m_discovery->searchAll(query, CATALOG_PAGE_LIMIT);
             auto response = createResponse(Status::CODE_200, serializeToJson(results));
             response->putHeader("Content-Type", "application/json");
             return response;

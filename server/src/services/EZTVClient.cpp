@@ -42,6 +42,7 @@ namespace media::services {
             curl_easy_cleanup(curl);
         }
 
+        spdlog::info("=== RAW RESPONSE [EZTV] {} ===\n{}\n=== END RAW RESPONSE [EZTV] ===", url, response);
         return response;
     }
 
