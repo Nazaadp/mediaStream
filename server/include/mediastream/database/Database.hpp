@@ -77,6 +77,10 @@ namespace media::database {
         float progress_percent;
         int64_t last_watched;
         bool completed;
+        // For SERIES/ANIME: the last (season, episode) the user opened.
+        // 0 = not applicable (movies) or unknown.
+        int last_season;
+        int last_episode;
     };
 
     // Series Episode

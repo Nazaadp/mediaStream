@@ -1,4 +1,5 @@
 #include "mediastream/services/ContentDiscovery.hpp"
+#include "mediastream/services/TorrentScorer.hpp"
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
@@ -103,7 +104,17 @@ namespace media::services {
                             tq.hash = torrent.value("hash", "");
                             tq.seeders = torrent.value("seeds", 0);
                             tq.leechers = torrent.value("peers", 0);
-                            
+
+                            // Structured quality enrichment — YTS exposes codec
+                            // and bit-depth as JSON fields (not in the title), so
+                            // the structured fast-path beats name-parsing here.
+                            TorrentScorer::enrichFromYTS(
+                                tq,
+                                tq.quality,
+                                torrent.value("video_codec", ""),
+                                tq.type,
+                                torrent.value("bit_depth", ""));
+
                             // Build magnet URI
                             if (!tq.hash.empty()) {
                                 std::ostringstream magnet;

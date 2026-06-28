@@ -156,7 +156,9 @@ public:
             history.duration_seconds = j.value("duration_seconds", 0);
             history.progress_percent = j.value("progress_percent", 0.0f);
             history.completed = j.value("completed", false);
-            
+            history.last_season = j.value("last_season", 0);
+            history.last_episode = j.value("last_episode", 0);
+
             m_db->upsertWatchHistory(history);
 
             auto response = createResponse(Status::CODE_200, "{\"success\":true}");
@@ -172,7 +174,60 @@ public:
     ENDPOINT("GET", "/api/v1/user/history", getHistory) {
         try {
             auto media_list = m_db->getWatchHistoryMedia(20);
-            auto response = createResponse(Status::CODE_200, serializeMediaList(media_list));
+
+            // Build response: same shape as serializeMediaList, plus the last
+            // (season, episode) pointer per item so the client can jump
+            // directly to that season's episode list when re-opening a series.
+            nlohmann::json j_arr = nlohmann::json::array();
+            for (const auto& m : media_list) {
+                nlohmann::json root;
+                root["id"] = m.id;
+                root["title"] = m.title;
+                root["original_title"] = m.original_title;
+                root["year"] = m.year;
+                root["description"] = m.description;
+                root["poster_url"] = m.poster_url;
+                root["backdrop_url"] = m.backdrop_url;
+                root["rating"] = m.rating;
+                root["genres"] = m.genres;
+                root["runtime_minutes"] = m.runtime_minutes;
+                root["imdb_id"] = m.imdb_id;
+                root["tmdb_id"] = m.tmdb_id;
+                root["language"] = m.language;
+                root["original_language"] = m.original_language;
+                root["type"] = media::database::contentTypeToString(m.type);
+
+                auto torrents = m_db->getTorrentsForMedia(m.id);
+                root["torrents"] = nlohmann::json::array();
+                for (const auto& t : torrents) {
+                    nlohmann::json tj;
+                    tj["quality"] = t.quality;
+                    tj["type"] = t.type;
+                    tj["source"] = t.source;
+                    tj["size_bytes"] = t.size_bytes;
+                    tj["hash"] = t.info_hash;
+                    tj["magnet_uri"] = t.magnet_uri;
+                    tj["seeders"] = t.seeders;
+                    tj["leechers"] = t.leechers;
+                    root["torrents"].push_back(tj);
+                }
+
+                auto wh = m_db->getWatchHistory(m.id);
+                if (wh) {
+                    // Resume / "Continue Watching" data — lets the client render a
+                    // progress bar on the poster and seed the player's resume point
+                    // (cross-device, independent of local SharedPreferences).
+                    root["position_seconds"] = wh->position_seconds;
+                    root["duration_seconds"] = wh->duration_seconds;
+                    root["progress_percent"] = wh->progress_percent;
+                    root["completed"] = wh->completed;
+                    if (wh->last_season > 0) root["last_season"] = wh->last_season;
+                    if (wh->last_episode > 0) root["last_episode"] = wh->last_episode;
+                }
+
+                j_arr.push_back(root);
+            }
+            auto response = createResponse(Status::CODE_200, oatpp::String(j_arr.dump()));
             response->putHeader("Content-Type", "application/json");
             return response;
         } catch (const std::exception& e) {

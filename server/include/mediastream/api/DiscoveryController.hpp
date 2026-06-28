@@ -161,6 +161,13 @@ public:
                 tj["magnet_uri"]         = t.magnet_uri;
                 tj["seeders"]            = t.seeders;
                 tj["leechers"]           = t.leechers;
+                // Parsed quality metadata (TorrentScorer) for client badges + sort
+                tj["resolution_p"]       = t.resolution_p;
+                tj["codec"]              = t.codec;
+                tj["is_hdr"]             = t.is_hdr;
+                tj["is_hdr10"]           = t.is_hdr10;
+                tj["is_dv"]              = t.is_dv;
+                tj["score"]              = t.score;
                 arr.push_back(tj);
             }
             auto response = createResponse(Status::CODE_200, arr.dump());
@@ -282,6 +289,13 @@ public:
                 tj["magnet_uri"]         = t.magnet_uri;
                 tj["seeders"]            = t.seeders;
                 tj["leechers"]           = t.leechers;
+                // Parsed quality metadata (TorrentScorer) for client badges + sort
+                tj["resolution_p"]       = t.resolution_p;
+                tj["codec"]              = t.codec;
+                tj["is_hdr"]             = t.is_hdr;
+                tj["is_hdr10"]           = t.is_hdr10;
+                tj["is_dv"]              = t.is_dv;
+                tj["score"]              = t.score;
                 arr.push_back(tj);
             }
             auto response = createResponse(Status::CODE_200, arr.dump());

@@ -122,13 +122,16 @@ namespace media::core {
             
             if (current_hash == info_hash_str) {
                 m_session.remove_torrent(h, lt::session::delete_files);
-                m_moov_boosted.erase(info_hash_str);
-                // Clean up per-piece deadline tracking keys for this hash
-                for (auto it = m_moov_deadline_set.begin(); it != m_moov_deadline_set.end(); ) {
-                    if (it->substr(0, info_hash_str.size()) == info_hash_str)
-                        it = m_moov_deadline_set.erase(it);
-                    else
-                        ++it;
+                {
+                    std::lock_guard<std::mutex> lock(m_moov_mutex);
+                    m_moov_boosted.erase(info_hash_str);
+                    // Clean up per-piece deadline tracking keys for this hash
+                    for (auto it = m_moov_deadline_set.begin(); it != m_moov_deadline_set.end(); ) {
+                        if (it->substr(0, info_hash_str.size()) == info_hash_str)
+                            it = m_moov_deadline_set.erase(it);
+                        else
+                            ++it;
+                    }
                 }
                 spdlog::info("Torrent removed with files: {}", info_hash_str);
                 return;
@@ -155,7 +158,10 @@ namespace media::core {
             if (ts.state != lt::torrent_status::downloading) continue;
 
             std::string hash = to_hex_string(h.info_hash());
-            if (m_moov_boosted.count(hash)) continue; // Already boosted
+            {
+                std::lock_guard<std::mutex> lock(m_moov_mutex);
+                if (m_moov_boosted.count(hash)) continue; // Already boosted
+            }
 
             const int total_pieces = h.torrent_file()->num_pieces();
             // Boost the last 5% of pieces. For a 2GB torrent with 512KB pieces
@@ -172,7 +178,10 @@ namespace media::core {
                 "Proactive moov boost: pieces {}-{} queued (with deadlines) for hash {}",
                 boost_from, total_pieces - 1, hash
             );
-            m_moov_boosted.insert(hash);
+            {
+                std::lock_guard<std::mutex> lock(m_moov_mutex);
+                m_moov_boosted.insert(hash);
+            }
         }
     }
 
@@ -294,7 +303,13 @@ namespace media::core {
                         // frontend. Re-setting deadlines repeatedly resets the countdown,
                         // which can delay delivery rather than accelerate it.
                         std::string moov_key = info_hash_str + ":" + std::to_string(piece_idx_int);
-                        if (!m_moov_deadline_set.count(moov_key)) {
+                        bool already_scheduled;
+                        {
+                            std::lock_guard<std::mutex> lock(m_moov_mutex);
+                            already_scheduled = m_moov_deadline_set.count(moov_key) != 0;
+                            if (!already_scheduled) m_moov_deadline_set.insert(moov_key);
+                        }
+                        if (!already_scheduled) {
                             spdlog::info(
                                 "Moov atom seek detected: boosting priority for pieces {}-{}",
                                 piece_idx_int, total_pieces - 1
@@ -306,7 +321,6 @@ namespace media::core {
                                 h.set_piece_deadline(lt::piece_index_t(i),
                                                      (i - piece_idx_int) * 200);
                             }
-                            m_moov_deadline_set.insert(moov_key);
                         } else {
                             spdlog::debug(
                                 "Moov seek for piece {} already scheduled, waiting...",

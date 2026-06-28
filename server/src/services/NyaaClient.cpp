@@ -1,4 +1,5 @@
 #include "mediastream/services/ContentDiscovery.hpp"
+#include "mediastream/services/TorrentScorer.hpp"
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
@@ -238,11 +239,10 @@ namespace media::services {
 
         std::vector<TorrentQuality> results;
         try {
-            // Build episode filter: matches " - 01 " / "E01" / " 01 [" patterns
-            char ep_buf[64];
-            std::snprintf(ep_buf, sizeof(ep_buf),
-                "(?:[-\\s]%02d[\\s\\[\\(]|[Ee]%02d[^\\d]|\\s%d\\s)", episode, episode, episode);
-            std::regex ep_re(ep_buf);
+            // Episode filter — hardened pattern (handles absolute numbering,
+            // "05v2", and won't false-match "1080p" / "10bit" / "x265").
+            std::regex ep_re(TorrentScorer::buildNyaaEpisodePattern(episode),
+                             std::regex::icase);
 
             std::regex item_re("<item>([\\s\\S]*?)</item>", std::regex::icase);
             std::regex title_re("<title>([\\s\\S]*?)</title>");
@@ -271,6 +271,9 @@ namespace media::services {
                 tq.source  = "Nyaa";
                 tq.audio_languages    = parseNyaaAudioLangs(full_title);
                 tq.subtitle_languages = parseTorrentSubtitleLangs(full_title);
+
+                // Parse resolution/codec/HDR from the RSS title; rewrites quality.
+                TorrentScorer::enrich(tq, full_title);
 
                 if (std::regex_search(item, m, seeders_re))  tq.seeders  = std::stoi(m[1].str());
                 if (std::regex_search(item, m, leechers_re)) tq.leechers = std::stoi(m[1].str());

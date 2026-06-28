@@ -58,6 +58,8 @@ class WatchHistoryDto : public oatpp::DTO {
     DTO_FIELD(Float32, progress_percent);
     DTO_FIELD(Int64, last_watched);
     DTO_FIELD(Int32, completed);
+    DTO_FIELD(Int32, last_season);
+    DTO_FIELD(Int32, last_episode);
 };
 
 class ViewLaterDto : public oatpp::DTO {
@@ -290,6 +292,8 @@ public:
                 progress_percent REAL DEFAULT 0.0,
                 last_watched INTEGER NOT NULL,
                 completed INTEGER DEFAULT 0,
+                last_season INTEGER,
+                last_episode INTEGER,
                 FOREIGN KEY (media_id) REFERENCES media_items(id) ON DELETE CASCADE,
                 UNIQUE(media_id)
             )
@@ -346,6 +350,10 @@ public:
         } catch (...) {
             // Safe to ignore, column already exists
         }
+
+        // Add last_season / last_episode to watch_history (migration for existing DBs)
+        try { m_impl->executeSQL("ALTER TABLE watch_history ADD COLUMN last_season INTEGER"); } catch (...) {}
+        try { m_impl->executeSQL("ALTER TABLE watch_history ADD COLUMN last_episode INTEGER"); } catch (...) {}
 
         spdlog::info("Database schema created successfully");
     }
@@ -695,21 +703,30 @@ public:
     // Watch History
     void Database::upsertWatchHistory(const WatchHistory& history) {
         auto now = std::chrono::system_clock::now().time_since_epoch().count();
-        
-        m_impl->client->executeQuery(oatpp::String("INSERT INTO watch_history (media_id, position_seconds, duration_seconds, progress_percent, "
-            "last_watched, completed) VALUES (:media_id, :position_seconds, :duration_seconds, :progress_percent, :last_watched, :completed) "
+
+        // last_season / last_episode are only updated when > 0 — passing 0 from
+        // a movie save must NOT clobber an existing series episode pointer.
+        m_impl->client->executeQuery(oatpp::String(
+            "INSERT INTO watch_history (media_id, position_seconds, duration_seconds, progress_percent, "
+            "last_watched, completed, last_season, last_episode) "
+            "VALUES (:media_id, :position_seconds, :duration_seconds, :progress_percent, :last_watched, :completed, :last_season, :last_episode) "
             "ON CONFLICT(media_id) DO UPDATE SET "
             "position_seconds = excluded.position_seconds, "
             "duration_seconds = excluded.duration_seconds, "
             "progress_percent = excluded.progress_percent, "
             "last_watched = excluded.last_watched, "
-            "completed = excluded.completed"), std::unordered_map<oatpp::String, oatpp::Void>{
+            "completed = excluded.completed, "
+            "last_season = CASE WHEN excluded.last_season > 0 THEN excluded.last_season ELSE watch_history.last_season END, "
+            "last_episode = CASE WHEN excluded.last_episode > 0 THEN excluded.last_episode ELSE watch_history.last_episode END"),
+            std::unordered_map<oatpp::String, oatpp::Void>{
                 {"media_id", oatpp::Int32(history.media_id)},
                 {"position_seconds", oatpp::Int64(history.position_seconds)},
                 {"duration_seconds", oatpp::Int64(history.duration_seconds)},
                 {"progress_percent", oatpp::Float32(history.progress_percent)},
                 {"last_watched", oatpp::Int64(now)},
-                {"completed", oatpp::Int32(history.completed ? 1 : 0)}
+                {"completed", oatpp::Int32(history.completed ? 1 : 0)},
+                {"last_season", oatpp::Int32(history.last_season)},
+                {"last_episode", oatpp::Int32(history.last_episode)}
             });
     }
 
@@ -730,6 +747,8 @@ public:
                 history.progress_percent = row->progress_percent ? *row->progress_percent : 0.0f;
                 history.last_watched = row->last_watched ? *row->last_watched : 0;
                 history.completed = (row->completed ? *row->completed : 0) != 0;
+                history.last_season = row->last_season ? *row->last_season : 0;
+                history.last_episode = row->last_episode ? *row->last_episode : 0;
                 return history;
             }
         }
@@ -754,6 +773,8 @@ public:
                     history.progress_percent = row->progress_percent ? *row->progress_percent : 0.0f;
                     history.last_watched = row->last_watched ? *row->last_watched : 0;
                     history.completed = (row->completed ? *row->completed : 0) != 0;
+                history.last_season = row->last_season ? *row->last_season : 0;
+                history.last_episode = row->last_episode ? *row->last_episode : 0;
                     histories.push_back(history);
                 }
             }

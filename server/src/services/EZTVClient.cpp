@@ -1,4 +1,5 @@
 #include "mediastream/services/ContentDiscovery.hpp"
+#include "mediastream/services/TorrentScorer.hpp"
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
@@ -221,6 +222,11 @@ namespace media::services {
                 tq.seeders = t.value("seeds", 0);
                 tq.leechers = t.value("peers", 0);
                 tq.magnet_uri = t.value("magnet_url", "");
+
+                // Parse resolution/codec/HDR/release from the release name and
+                // rewrite the legacy quality string (was hard-coded "720p").
+                TorrentScorer::enrich(tq, tq.title);
+
                 results.push_back(tq);
             }
             spdlog::info("EZTV: {} torrents for {} S{:02d}E{:02d}", results.size(), imdb_id, season, episode);

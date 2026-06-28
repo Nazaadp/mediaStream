@@ -1,4 +1,5 @@
 #include "mediastream/services/ContentDiscovery.hpp"
+#include "mediastream/services/TorrentScorer.hpp"
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
@@ -154,6 +155,16 @@ namespace media::services {
                         tq.leechers = 0; // Not provided by Torrentio
                         tq.audio_languages    = parseTorrentAudioLangs(tq.title);
                         tq.subtitle_languages = parseTorrentSubtitleLangs(tq.title);
+
+                        // Quality enrichment — prefer behaviorHints.filename (the
+                        // true release name) and fall back to the title's first
+                        // line. enrich() also rewrites the legacy quality string.
+                        std::string parse_name = tq.title;
+                        if (stream.contains("behaviorHints") &&
+                            stream["behaviorHints"].contains("filename")) {
+                            parse_name = stream["behaviorHints"].value("filename", tq.title);
+                        }
+                        TorrentScorer::enrich(tq, parse_name);
 
                         // Assemble MagnetURI dynamically
                         std::ostringstream magnet;

@@ -405,4 +405,21 @@ inline void enrichAndScore(std::vector<TorrentQuality>& results,
     std::sort(results.begin(), results.end(), better);
 }
 
+// scoreAndSort(results)
+//   For pipelines where each source client has ALREADY enriched its own
+//   torrents (e.g. YTS via enrichFromYTS for its structured codec/bit-depth,
+//   others via enrich() on the release name). Computes the score in place,
+//   drops CAM/TS entries, and sorts by score descending — WITHOUT re-enriching
+//   (which would clobber the per-source metadata, notably YTS's codec/HDR).
+inline void scoreAndSort(std::vector<TorrentQuality>& results) {
+    for (auto& t : results) t.score = score(t);
+
+    results.erase(
+        std::remove_if(results.begin(), results.end(),
+                       [](const TorrentQuality& t){ return t.is_cam; }),
+        results.end());
+
+    std::sort(results.begin(), results.end(), better);
+}
+
 } // namespace media::services::TorrentScorer

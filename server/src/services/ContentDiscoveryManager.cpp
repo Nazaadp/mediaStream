@@ -1,5 +1,6 @@
 #include "mediastream/services/ContentDiscovery.hpp"
 #include "mediastream/services/TMDBFetcher.hpp"
+#include "mediastream/services/TorrentScorer.hpp"
 #include <spdlog/spdlog.h>
 #include <algorithm>
 #include <future>
@@ -256,9 +257,10 @@ namespace media::services {
         }
         results.clear();
         for (const auto& [h, tq] : deduped) results.push_back(tq);
-        std::sort(results.begin(), results.end(), [](const TorrentQuality& a, const TorrentQuality& b){
-            return a.seeders > b.seeders;
-        });
+
+        // Rank by parsed quality (resolution/codec/HDR/release) + seeder curve,
+        // and drop CAM/TS rips. Torrents were enriched per-source by each client.
+        TorrentScorer::scoreAndSort(results);
 
         spdlog::info("fetchMovieTorrents: {} for {}", results.size(), imdb_id);
         return results;
@@ -369,9 +371,9 @@ namespace media::services {
         }
         results.clear();
         for (const auto& [h, tq] : deduped) results.push_back(tq);
-        std::sort(results.begin(), results.end(), [](const TorrentQuality& a, const TorrentQuality& b){
-            return a.seeders > b.seeders;
-        });
+
+        // Rank by parsed quality + seeder curve, drop CAM/TS. Per-source enriched.
+        TorrentScorer::scoreAndSort(results);
 
         spdlog::info("fetchEpisodeTorrents: {} for {} S{:02d}E{:02d}", results.size(), imdb_id, season, episode);
         return results;

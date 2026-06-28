@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <optional>
 #include <set>
+#include <mutex>
 
 namespace media::core {
 
@@ -67,6 +68,11 @@ namespace media::core {
         // 503 retry from the frontend, which resets libtorrent's countdown and
         // can actively slow down out-of-order piece delivery.
         std::set<std::string> m_moov_deadline_set;
+        // Guards m_moov_boosted and m_moov_deadline_set. These sets are mutated
+        // from three thread contexts with no other synchronization: the WS
+        // broadcaster (proactivelyBoostEndPieces), concurrent oatpp HTTP workers
+        // (waitForPiece), and removeTorrent. Concurrent std::set mutation is UB.
+        std::mutex m_moov_mutex;
     };
 
 } // namespace media::core
