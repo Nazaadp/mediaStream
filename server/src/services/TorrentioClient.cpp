@@ -146,7 +146,20 @@ namespace media::services {
                         TorrentQuality tq;
 
                         std::string full_title = stream.value("title", "");
-                        tq.title   = parseName(full_title);
+
+                        // Torrentio's title block is multi-line. For series/anime,
+                        // line 1 is frequently a season-pack or messy multi-language
+                        // label while the real episode file lives in
+                        // behaviorHints.filename. Prefer the filename as both the
+                        // display title and the parse target; fall back to the
+                        // title's first line when no filename is provided.
+                        std::string release_name = parseName(full_title);
+                        if (stream.contains("behaviorHints") &&
+                            stream["behaviorHints"].contains("filename")) {
+                            release_name = stream["behaviorHints"].value("filename", release_name);
+                        }
+
+                        tq.title   = release_name;
                         tq.quality = tq.title; // keep quality in sync for legacy consumers
                         tq.source  = parseSource(full_title);
                         tq.type    = tq.source;  // keep type in sync for legacy consumers
@@ -154,18 +167,35 @@ namespace media::services {
                         tq.size_bytes = parseSizeStr(full_title);
                         tq.seeders = parseSeeders(full_title);
                         tq.leechers = 0; // Not provided by Torrentio
-                        tq.audio_languages    = parseTorrentAudioLangs(tq.title);
-                        tq.subtitle_languages = parseTorrentSubtitleLangs(tq.title);
+                        // Languages are parsed from the FULL title block: the textual
+                        // lang tags (MULTi / Dual / ITA / AMZN …) may sit on a line
+                        // other than the filename, so the whole block is the richest
+                        // source. (The 🇬🇧/🇷🇺 flag emojis are ignored by the parser.)
+                        tq.audio_languages    = parseTorrentAudioLangs(full_title);
+                        tq.subtitle_languages = parseTorrentSubtitleLangs(full_title);
 
-                        // Quality enrichment — prefer behaviorHints.filename (the
-                        // true release name) and fall back to the title's first
-                        // line. enrich() also rewrites the legacy quality string.
-                        std::string parse_name = tq.title;
-                        if (stream.contains("behaviorHints") &&
-                            stream["behaviorHints"].contains("filename")) {
-                            parse_name = stream["behaviorHints"].value("filename", tq.title);
+                        // enrich() parses resolution/codec/HDR/release type from the
+                        // release name and rewrites the legacy quality string.
+                        TorrentScorer::enrich(tq, release_name);
+
+                        // Backstop from Torrentio's structured "name" field
+                        // (e.g. "Torrentio\n4k DV | HDR10+"), which reliably
+                        // encodes resolution + HDR/DV. Only fills gaps left by the
+                        // release-name parse — never overrides richer data.
+                        std::string name_field = stream.value("name", "");
+                        if (!name_field.empty()) {
+                            const std::string name_norm = TorrentScorer::normalize(name_field);
+                            if (tq.resolution_p == 0) {
+                                tq.resolution_p = TorrentScorer::parseResolution(name_norm);
+                                if (tq.resolution_p > 0)
+                                    tq.quality = std::to_string(tq.resolution_p) + "p";
+                            }
+                            bool n_hdr = false, n_hdr10 = false, n_dv = false;
+                            TorrentScorer::parseHDR(name_norm, n_hdr, n_hdr10, n_dv);
+                            tq.is_hdr   = tq.is_hdr   || n_hdr;
+                            tq.is_hdr10 = tq.is_hdr10 || n_hdr10;
+                            tq.is_dv    = tq.is_dv    || n_dv;
                         }
-                        TorrentScorer::enrich(tq, parse_name);
 
                         // Assemble MagnetURI dynamically
                         std::ostringstream magnet;

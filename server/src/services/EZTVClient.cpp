@@ -189,51 +189,102 @@ namespace media::services {
         if (numeric_id.substr(0, 2) == "tt") numeric_id = numeric_id.substr(2);
         numeric_id = std::to_string(std::stoi(numeric_id)); // remove leading zeros
 
-        std::string url = m_impl->BASE_URL + "/get-torrents?imdb_id=" + numeric_id + "&limit=100";
-        spdlog::info("EZTV episode fetch: {}", url);
-        std::string response = httpGet(url);
-        if (response.empty()) return results;
+        // EZTV's get-torrents endpoint is a flat, newest-first list with no
+        // season/episode query params, so older episodes live on later pages.
+        // We page backwards until we scroll past the target season or hit the
+        // page budget — bounded to keep load low on the host.
+        constexpr int kPageSize = 100;
+        constexpr int kMaxPages = 5;
 
-        try {
-            auto j = json::parse(response);
-            if (!j.contains("torrents")) return results;
+        // EZTV serializes season/episode/size/seeds as either string or number.
+        auto jint = [](const json& obj, const char* key) -> long long {
+            if (!obj.contains(key)) return -1;
+            const auto& v = obj[key];
+            if (v.is_number_integer()) return v.get<long long>();
+            if (v.is_string()) { try { return std::stoll(v.get<std::string>()); } catch (...) {} }
+            return -1;
+        };
 
-            // Build regex for S{season}E{episode} in the torrent title
-            char se_buf[32];
-            std::snprintf(se_buf, sizeof(se_buf), "[Ss]%02d[Ee]%02d", season, episode);
-            std::regex se_re(se_buf);
+        // Fallback regex for entries that lack structured season/episode fields.
+        char se_buf[32];
+        std::snprintf(se_buf, sizeof(se_buf), "[Ss]%02d[Ee]%02d", season, episode);
+        std::regex se_re(se_buf);
 
-            for (const auto& t : j["torrents"]) {
-                std::string title = t.value("title", "");
-                if (!std::regex_search(title, se_re)) continue;
+        for (int page = 1; page <= kMaxPages; ++page) {
+            std::string url = m_impl->BASE_URL + "/get-torrents?imdb_id=" + numeric_id
+                            + "&limit=" + std::to_string(kPageSize)
+                            + "&page="  + std::to_string(page);
+            spdlog::info("EZTV episode fetch (page {}): {}", page, url);
+            std::string response = httpGet(url);
+            if (response.empty()) break;
 
-                TorrentQuality tq;
-                tq.title   = title;
-                tq.quality = title; // keep quality in sync for legacy consumers
-                tq.type    = "EZTV";
-                tq.source  = "EZTV";
-                tq.audio_languages    = parseTorrentAudioLangs(title);
-                tq.subtitle_languages = parseTorrentSubtitleLangs(title);
-                if (t["size_bytes"].is_string()) {
-                    tq.size_bytes = std::stoull(t["size_bytes"].get<std::string>());
-                } else if (t["size_bytes"].is_number()) {
-                    tq.size_bytes = t["size_bytes"].get<int64_t>();
+            try {
+                auto j = json::parse(response);
+                if (!j.contains("torrents") || !j["torrents"].is_array()) break;
+                const auto& torrents = j["torrents"];
+                if (torrents.empty()) break;
+
+                bool passed_target = false; // saw a real season older than the target
+
+                for (const auto& t : torrents) {
+                    const long long t_season  = jint(t, "season");
+                    const long long t_episode = jint(t, "episode");
+                    const std::string t_title = t.value("title", "");
+
+                    // Prefer EZTV's structured season/episode fields; fall back to
+                    // an SxxExx regex on the title when they're absent.
+                    bool match;
+                    if (t_season >= 0 && t_episode >= 0) {
+                        match = (t_season == season && t_episode == episode);
+                        // Season 0 = specials; ignore them for the stop heuristic.
+                        if (t_season > 0 && t_season < season) passed_target = true;
+                    } else {
+                        match = std::regex_search(t_title, se_re);
+                    }
+                    if (!match) continue;
+
+                    // The "filename" field is the true release name and is richer
+                    // than the spaced-out "title" — prefer it for quality parsing.
+                    const std::string parse_name =
+                        (t.contains("filename") && t["filename"].is_string())
+                        ? t["filename"].get<std::string>()
+                        : t_title;
+
+                    TorrentQuality tq;
+                    tq.title   = t_title;
+                    tq.quality = t_title; // keep quality in sync for legacy consumers
+                    tq.type    = "EZTV";
+                    tq.source  = "EZTV";
+                    tq.audio_languages    = parseTorrentAudioLangs(parse_name);
+                    tq.subtitle_languages = parseTorrentSubtitleLangs(parse_name);
+
+                    const long long sb = jint(t, "size_bytes");
+                    const long long sd = jint(t, "seeds");
+                    const long long pr = jint(t, "peers");
+                    tq.size_bytes = sb < 0 ? 0 : static_cast<int64_t>(sb);
+                    tq.seeders    = sd < 0 ? 0 : static_cast<int>(sd);
+                    tq.leechers   = pr < 0 ? 0 : static_cast<int>(pr);
+                    tq.hash       = t.value("hash", "");
+                    tq.magnet_uri = t.value("magnet_url", "");
+
+                    // Parse resolution/codec/HDR/release from the release name and
+                    // rewrite the legacy quality string (was hard-coded "720p").
+                    TorrentScorer::enrich(tq, parse_name);
+
+                    results.push_back(tq);
                 }
-                tq.hash = t.value("hash", "");
-                tq.seeders = t.value("seeds", 0);
-                tq.leechers = t.value("peers", 0);
-                tq.magnet_uri = t.value("magnet_url", "");
 
-                // Parse resolution/codec/HDR/release from the release name and
-                // rewrite the legacy quality string (was hard-coded "720p").
-                TorrentScorer::enrich(tq, tq.title);
-
-                results.push_back(tq);
+                // Newest-first ordering: once we've scrolled past the target season
+                // (or this was the last page), nothing older remains worth fetching.
+                if (passed_target) break;
+                if (torrents.size() < static_cast<size_t>(kPageSize)) break;
+            } catch (const std::exception& e) {
+                spdlog::error("EZTV fetchEpisodeTorrents parse error: {}", e.what());
+                break;
             }
-            spdlog::info("EZTV: {} torrents for {} S{:02d}E{:02d}", results.size(), imdb_id, season, episode);
-        } catch (const std::exception& e) {
-            spdlog::error("EZTV fetchEpisodeTorrents parse error: {}", e.what());
         }
+
+        spdlog::info("EZTV: {} torrents for {} S{:02d}E{:02d}", results.size(), imdb_id, season, episode);
         return results;
     }
 
