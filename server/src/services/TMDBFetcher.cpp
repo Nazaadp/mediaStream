@@ -180,6 +180,7 @@ namespace media::services {
             // Step 1: resolve IMDB ID → TMDB ID
             std::string find_url = m_impl->BASE_URL + "/find/" + imdb_id + "?external_source=imdb_id&language=en-US";
             std::string find_res = tmdbHttpGet(find_url, m_impl->m_api_key);
+            spdlog::info("=== RAW RESPONSE [SEASONS-FIND / TMDB] {} (imdb {}) ===\n{}\n=== END RAW RESPONSE [SEASONS-FIND / TMDB] ===", find_url, imdb_id, find_res);
             if (find_res.empty()) return results;
 
             auto fj = json::parse(find_res);
@@ -195,6 +196,7 @@ namespace media::services {
             // Step 2: fetch show details (includes seasons array)
             std::string show_url = m_impl->BASE_URL + "/tv/" + tmdb_id + "?language=en-US";
             std::string show_res = tmdbHttpGet(show_url, m_impl->m_api_key);
+            spdlog::info("=== RAW RESPONSE [SEASONS / TMDB] {} (imdb {}) ===\n{}\n=== END RAW RESPONSE [SEASONS / TMDB] ===", show_url, imdb_id, show_res);
             if (show_res.empty()) return results;
 
             auto sj = json::parse(show_res);
@@ -241,6 +243,7 @@ namespace media::services {
             // Fetch season episodes
             std::string ep_url = m_impl->BASE_URL + "/tv/" + tmdb_id + "/season/" + std::to_string(season) + "?language=en-US";
             std::string ep_res = tmdbHttpGet(ep_url, m_impl->m_api_key);
+            spdlog::info("=== RAW RESPONSE [EPISODES / TMDB] {} (imdb {} S{}) ===\n{}\n=== END RAW RESPONSE [EPISODES / TMDB] ===", ep_url, imdb_id, season, ep_res);
             if (ep_res.empty()) return results;
 
             auto ej = json::parse(ep_res);
