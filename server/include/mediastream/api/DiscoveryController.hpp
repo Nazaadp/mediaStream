@@ -8,6 +8,12 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
+#include <sstream>
+#include <string>
+#include <unordered_set>
+#include <vector>
+
 namespace media::api {
 
 #include OATPP_CODEGEN_BEGIN(ApiController)
@@ -20,6 +26,64 @@ private:
     static constexpr int CATALOG_PAGE_LIMIT = 10;
 
     std::shared_ptr<media::services::ContentDiscoveryManager> m_discovery;
+
+    // ── Torrent result filtering (res / audio / subs query params) ─────────
+
+    // Split a comma-separated query param into an uppercase token set.
+    // Absent param → empty set → that dimension is unfiltered.
+    static std::unordered_set<std::string> parseCsvParam(const oatpp::String& param) {
+        std::unordered_set<std::string> out;
+        if (!param) return out;
+        std::stringstream ss(param->c_str());
+        std::string tok;
+        while (std::getline(ss, tok, ',')) {
+            std::transform(tok.begin(), tok.end(), tok.begin(), ::toupper);
+            if (!tok.empty()) out.insert(tok);
+        }
+        return out;
+    }
+
+    // True when any '/'-separated language tag intersects the wanted set.
+    static bool langMatches(const std::string& langs,
+                            const std::unordered_set<std::string>& wanted) {
+        std::stringstream ss(langs);
+        std::string tok;
+        while (std::getline(ss, tok, '/')) {
+            if (wanted.count(tok)) return true;
+        }
+        return false;
+    }
+
+    // Applies ?res=1080,720&audio=EN,ES&subs=EN filters in place. Resolution
+    // is strict (unknown/0 is dropped when a res filter is active); language
+    // metadata is best-effort name parsing, so MULTI/DUAL and unknown values
+    // pass rather than punishing torrents for missing tags.
+    void applyTorrentFilters(std::vector<media::services::TorrentQuality>& torrents,
+                             const std::shared_ptr<IncomingRequest>& request) {
+        const auto res   = parseCsvParam(request->getQueryParameter("res"));
+        const auto audio = parseCsvParam(request->getQueryParameter("audio"));
+        const auto subs  = parseCsvParam(request->getQueryParameter("subs"));
+        if (res.empty() && audio.empty() && subs.empty()) return;
+
+        const size_t before = torrents.size();
+        std::erase_if(torrents, [&](const media::services::TorrentQuality& t) {
+            if (!res.empty() && !res.count(std::to_string(t.resolution_p))) return true;
+            if (!audio.empty()) {
+                const std::string& a = t.audio_languages;
+                const bool pass = a.empty() || a == "MULTI" || a == "DUAL" ||
+                                  a == "N/A" || langMatches(a, audio);
+                if (!pass) return true;
+            }
+            if (!subs.empty()) {
+                const std::string& s = t.subtitle_languages;
+                const bool pass = s.empty() || s == "MULTI" || s == "N/A" ||
+                                  langMatches(s, subs);
+                if (!pass) return true;
+            }
+            return false;
+        });
+        spdlog::info("Torrent filters kept {}/{} torrents", torrents.size(), before);
+    }
 
     oatpp::String serializeToJson(const std::vector<media::services::DiscoveredContent>& content_list) {
         nlohmann::json j_arr = nlohmann::json::array();
@@ -151,6 +215,7 @@ public:
             if (!id) return createResponse(Status::CODE_400, "Missing imdb_id");
 
             auto torrents = m_discovery->fetchMovieTorrents(id->c_str());
+            applyTorrentFilters(torrents, request);
 
             nlohmann::json arr = nlohmann::json::array();
             for (const auto& t : torrents) {
@@ -279,6 +344,7 @@ public:
             std::string title = t ? t->c_str() : "";
             auto torrents = m_discovery->fetchEpisodeTorrents(
                 id->c_str(), std::stoi(sn->c_str()), std::stoi(ep->c_str()), title);
+            applyTorrentFilters(torrents, request);
 
             nlohmann::json arr = nlohmann::json::array();
             for (const auto& t : torrents) {
