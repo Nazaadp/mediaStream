@@ -233,7 +233,8 @@ namespace media::services {
         return results;
     }
 
-    std::vector<TorrentQuality> ContentDiscoveryManager::fetchMovieTorrents(const std::string& imdb_id) {
+    std::vector<TorrentQuality> ContentDiscoveryManager::fetchMovieTorrents(const std::string& imdb_id,
+                                                                            const TorrentFilterCriteria& filters) {
         std::vector<TorrentQuality> results;
 
         // Fetch Torrentio and YTS in parallel
@@ -263,6 +264,11 @@ namespace media::services {
         results.clear();
         for (const auto& [h, tq] : deduped) results.push_back(tq);
 
+        // Filter BEFORE ranking/truncation: 4K scores highest, so filtering
+        // the capped top-10 would leave almost no lower-resolution results.
+        const size_t pre_filter = results.size();
+        applyTorrentFilters(results, filters);
+
         // Rank by parsed quality (resolution/codec/HDR/release) + seeder curve,
         // and drop CAM/TS rips. Torrents were enriched per-source by each client.
         TorrentScorer::scoreAndSort(results);
@@ -270,7 +276,7 @@ namespace media::services {
         // Keep only the top-ranked torrents to bound output and log volume.
         if (results.size() > MAX_TORRENTS_PER_ITEM) results.resize(MAX_TORRENTS_PER_ITEM);
 
-        spdlog::info("fetchMovieTorrents: {} for {}", results.size(), imdb_id);
+        spdlog::info("fetchMovieTorrents: {} for {} (filtered from {})", results.size(), imdb_id, pre_filter);
         return results;
     }
 
@@ -347,7 +353,8 @@ namespace media::services {
     }
 
     std::vector<TorrentQuality> ContentDiscoveryManager::fetchEpisodeTorrents(
-        const std::string& imdb_id, int season, int episode, const std::string& title)
+        const std::string& imdb_id, int season, int episode, const std::string& title,
+        const TorrentFilterCriteria& filters)
     {
         std::vector<TorrentQuality> results;
 
@@ -380,13 +387,18 @@ namespace media::services {
         results.clear();
         for (const auto& [h, tq] : deduped) results.push_back(tq);
 
+        // Filter BEFORE ranking/truncation — see fetchMovieTorrents.
+        const size_t pre_filter = results.size();
+        applyTorrentFilters(results, filters);
+
         // Rank by parsed quality + seeder curve, drop CAM/TS. Per-source enriched.
         TorrentScorer::scoreAndSort(results);
 
         // Keep only the top-ranked torrents to bound output and log volume.
         if (results.size() > MAX_TORRENTS_PER_ITEM) results.resize(MAX_TORRENTS_PER_ITEM);
 
-        spdlog::info("fetchEpisodeTorrents: {} for {} S{:02d}E{:02d}", results.size(), imdb_id, season, episode);
+        spdlog::info("fetchEpisodeTorrents: {} for {} S{:02d}E{:02d} (filtered from {})",
+                     results.size(), imdb_id, season, episode, pre_filter);
         return results;
     }
 

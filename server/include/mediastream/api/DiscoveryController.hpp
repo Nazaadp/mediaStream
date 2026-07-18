@@ -43,46 +43,16 @@ private:
         return out;
     }
 
-    // True when any '/'-separated language tag intersects the wanted set.
-    static bool langMatches(const std::string& langs,
-                            const std::unordered_set<std::string>& wanted) {
-        std::stringstream ss(langs);
-        std::string tok;
-        while (std::getline(ss, tok, '/')) {
-            if (wanted.count(tok)) return true;
-        }
-        return false;
-    }
-
-    // Applies ?res=1080,720&audio=EN,ES&subs=EN filters in place. Resolution
-    // is strict (unknown/0 is dropped when a res filter is active); language
-    // metadata is best-effort name parsing, so MULTI/DUAL and unknown values
-    // pass rather than punishing torrents for missing tags.
-    void applyTorrentFilters(std::vector<media::services::TorrentQuality>& torrents,
-                             const std::shared_ptr<IncomingRequest>& request) {
-        const auto res   = parseCsvParam(request->getQueryParameter("res"));
-        const auto audio = parseCsvParam(request->getQueryParameter("audio"));
-        const auto subs  = parseCsvParam(request->getQueryParameter("subs"));
-        if (res.empty() && audio.empty() && subs.empty()) return;
-
-        const size_t before = torrents.size();
-        std::erase_if(torrents, [&](const media::services::TorrentQuality& t) {
-            if (!res.empty() && !res.count(std::to_string(t.resolution_p))) return true;
-            if (!audio.empty()) {
-                const std::string& a = t.audio_languages;
-                const bool pass = a.empty() || a == "MULTI" || a == "DUAL" ||
-                                  a == "N/A" || langMatches(a, audio);
-                if (!pass) return true;
-            }
-            if (!subs.empty()) {
-                const std::string& s = t.subtitle_languages;
-                const bool pass = s.empty() || s == "MULTI" || s == "N/A" ||
-                                  langMatches(s, subs);
-                if (!pass) return true;
-            }
-            return false;
-        });
-        spdlog::info("Torrent filters kept {}/{} torrents", torrents.size(), before);
+    // Builds filter criteria from ?res=1080,720&audio=EN,ES&subs=EN params.
+    // The manager applies them to the full aggregated list BEFORE score-sort
+    // truncation (see applyTorrentFilters in ContentDiscovery.hpp).
+    static media::services::TorrentFilterCriteria parseFilterCriteria(
+            const std::shared_ptr<IncomingRequest>& request) {
+        media::services::TorrentFilterCriteria criteria;
+        criteria.resolutions = parseCsvParam(request->getQueryParameter("res"));
+        criteria.audio       = parseCsvParam(request->getQueryParameter("audio"));
+        criteria.subs        = parseCsvParam(request->getQueryParameter("subs"));
+        return criteria;
     }
 
     oatpp::String serializeToJson(const std::vector<media::services::DiscoveredContent>& content_list) {
@@ -214,8 +184,7 @@ public:
             auto id = request->getQueryParameter("imdb_id");
             if (!id) return createResponse(Status::CODE_400, "Missing imdb_id");
 
-            auto torrents = m_discovery->fetchMovieTorrents(id->c_str());
-            applyTorrentFilters(torrents, request);
+            auto torrents = m_discovery->fetchMovieTorrents(id->c_str(), parseFilterCriteria(request));
 
             nlohmann::json arr = nlohmann::json::array();
             for (const auto& t : torrents) {
@@ -343,8 +312,8 @@ public:
             auto t = request->getQueryParameter("title");
             std::string title = t ? t->c_str() : "";
             auto torrents = m_discovery->fetchEpisodeTorrents(
-                id->c_str(), std::stoi(sn->c_str()), std::stoi(ep->c_str()), title);
-            applyTorrentFilters(torrents, request);
+                id->c_str(), std::stoi(sn->c_str()), std::stoi(ep->c_str()), title,
+                parseFilterCriteria(request));
 
             nlohmann::json arr = nlohmann::json::array();
             for (const auto& t : torrents) {

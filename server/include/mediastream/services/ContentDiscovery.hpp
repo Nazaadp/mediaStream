@@ -5,6 +5,8 @@
 #include <memory>
 #include <optional>
 #include <algorithm>
+#include <sstream>
+#include <unordered_set>
 
 namespace media::services {
 
@@ -142,6 +144,54 @@ namespace media::services {
         std::string up = code;
         std::transform(up.begin(), up.end(), up.begin(), ::toupper);
         return up;
+    }
+
+    // ── Torrent result filters (?res / ?audio / ?subs query params) ──────────
+
+    struct TorrentFilterCriteria {
+        std::unordered_set<std::string> resolutions; // "2160", "1080", ...
+        std::unordered_set<std::string> audio;       // uppercase ISO codes
+        std::unordered_set<std::string> subs;
+        bool empty() const { return resolutions.empty() && audio.empty() && subs.empty(); }
+    };
+
+    // True when any '/'-separated language tag intersects the wanted set.
+    inline bool torrentLangMatches(const std::string& langs,
+                                   const std::unordered_set<std::string>& wanted) {
+        std::stringstream ss(langs);
+        std::string tok;
+        while (std::getline(ss, tok, '/')) {
+            if (wanted.count(tok)) return true;
+        }
+        return false;
+    }
+
+    // Applies the criteria in place. Must run on the FULL aggregated list,
+    // before score-sort truncation — otherwise 4K releases (which score
+    // highest) crowd every lower-resolution pick out of the capped result.
+    // Resolution is strict (unknown/0 dropped when a res filter is active);
+    // language metadata is best-effort name parsing, so MULTI/DUAL and
+    // unknown values pass rather than punishing torrents for missing tags.
+    inline void applyTorrentFilters(std::vector<TorrentQuality>& torrents,
+                                    const TorrentFilterCriteria& f) {
+        if (f.empty()) return;
+        std::erase_if(torrents, [&](const TorrentQuality& t) {
+            if (!f.resolutions.empty() &&
+                !f.resolutions.count(std::to_string(t.resolution_p))) return true;
+            if (!f.audio.empty()) {
+                const std::string& a = t.audio_languages;
+                const bool pass = a.empty() || a == "MULTI" || a == "DUAL" ||
+                                  a == "N/A" || torrentLangMatches(a, f.audio);
+                if (!pass) return true;
+            }
+            if (!f.subs.empty()) {
+                const std::string& s = t.subtitle_languages;
+                const bool pass = s.empty() || s == "MULTI" || s == "N/A" ||
+                                  torrentLangMatches(s, f.subs);
+                if (!pass) return true;
+            }
+            return false;
+        });
     }
 
     // Season summary (from TMDB)
@@ -321,14 +371,19 @@ namespace media::services {
         std::vector<DiscoveredContent> fetchSeries(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "");
         std::vector<DiscoveredContent> fetchAnime(int limit = 20, int page = 1, const std::string& genre = "", const std::string& language = "");
 
-        // On-demand movie torrents (called when user opens a movie card)
-        std::vector<TorrentQuality> fetchMovieTorrents(const std::string& imdb_id);
+        // On-demand movie torrents (called when user opens a movie card).
+        // filters are applied to the full aggregated list before truncation.
+        std::vector<TorrentQuality> fetchMovieTorrents(const std::string& imdb_id,
+                                                       const TorrentFilterCriteria& filters = {});
 
         // On-demand episode navigation (called when user opens a series card)
         std::vector<SeasonInfo>  fetchSeasons(const std::string& imdb_id);
         std::vector<EpisodeInfo> fetchEpisodes(const std::string& imdb_id, int season);
-        // title is forwarded to Nyaa for anime episodes
-        std::vector<TorrentQuality> fetchEpisodeTorrents(const std::string& imdb_id, int season, int episode, const std::string& title = "");
+        // title is forwarded to Nyaa for anime episodes.
+        // filters are applied to the full aggregated list before truncation.
+        std::vector<TorrentQuality> fetchEpisodeTorrents(const std::string& imdb_id, int season, int episode,
+                                                         const std::string& title = "",
+                                                         const TorrentFilterCriteria& filters = {});
 
         // On-demand genres (called when user opens a media card)
         std::string fetchGenres(const std::string& imdb_id);
