@@ -661,7 +661,9 @@ public:
     }
 
     std::optional<TorrentInfo> Database::getTorrentByHash(const std::string& info_hash) {
-        auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM torrents WHERE info_hash = :info_hash"), std::unordered_map<oatpp::String, oatpp::Void>{
+        // NOCASE: discovery sources store hashes in mixed case (YTS uppercase)
+        // while libtorrent reports lowercase — the lookup must match both.
+        auto result = m_impl->client->executeQuery(oatpp::String("SELECT * FROM torrents WHERE info_hash = :info_hash COLLATE NOCASE"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"info_hash", oatpp::String(info_hash)}
             });
 
