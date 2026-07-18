@@ -44,20 +44,58 @@ private:
             auto torrents = m_db->getTorrentsForMedia(m.id);
             root["torrents"] = nlohmann::json::array();
             for (const auto& t : torrents) {
-                nlohmann::json tj;
-                tj["quality"] = t.quality;
-                tj["type"] = t.type;
-                tj["source"] = t.source;
-                tj["size_bytes"] = t.size_bytes;
-                tj["hash"] = t.info_hash;
-                tj["magnet_uri"] = t.magnet_uri;
-                tj["seeders"] = t.seeders;
-                tj["leechers"] = t.leechers;
-                root["torrents"].push_back(tj);
+                root["torrents"].push_back(serializeTorrent(t));
             }
             j_arr.push_back(root);
         }
         return j_arr.dump();
+    }
+
+    nlohmann::json serializeTorrent(const media::database::TorrentInfo& t) {
+        nlohmann::json tj;
+        tj["quality"] = t.quality;
+        tj["title"] = t.title;
+        tj["type"] = t.type;
+        tj["source"] = t.source;
+        tj["size_bytes"] = t.size_bytes;
+        tj["hash"] = t.info_hash;
+        tj["magnet_uri"] = t.magnet_uri;
+        tj["seeders"] = t.seeders;
+        tj["leechers"] = t.leechers;
+        // Only meaningful for series/anime episode torrents — 0 means "not
+        // episode-bound", which the client expects as an absent field.
+        if (t.season > 0) tj["season"] = t.season;
+        if (t.episode > 0) tj["episode"] = t.episode;
+        return tj;
+    }
+
+    // The client serializes absent optionals as JSON null (not missing keys),
+    // and nlohmann's value() throws on null — extract defensively.
+    media::database::TorrentInfo parseTorrentFromJson(const nlohmann::json& t, int media_id) {
+        media::database::TorrentInfo tinfo;
+        tinfo.media_id = media_id;
+        tinfo.info_hash = t.value("hash", "");
+        tinfo.magnet_uri = t.value("magnet_uri", "");
+        tinfo.quality = t.value("quality", "");
+        tinfo.type = t.value("type", "");
+        tinfo.size_bytes = t.value("size_bytes", 0LL);
+        tinfo.seeders = t.value("seeders", 0);
+        tinfo.leechers = t.value("leechers", 0);
+        tinfo.source = "Discovery"; // Fallback
+        if (t.contains("source") && t["source"].is_string()) {
+            tinfo.source = t["source"].get<std::string>();
+        }
+        tinfo.status = media::database::DownloadStatus::PENDING;
+        if (t.contains("title") && t["title"].is_string()) {
+            tinfo.title = t["title"].get<std::string>();
+        }
+        if (t.contains("season") && t["season"].is_number_integer()) {
+            tinfo.season = t["season"].get<int>();
+        }
+        if (t.contains("episode") && t["episode"].is_number_integer()) {
+            tinfo.episode = t["episode"].get<int>();
+        }
+        return tinfo;
     }
 
     media::database::MediaItem parseMediaItemFromJson(const nlohmann::json& j) {
@@ -128,24 +166,13 @@ public:
             // Upsert the media item first
             int media_id = m_db->upsertMediaItem(item);
 
-            // UPSERT Torrent files so the History list has them
-            if (j["media"].contains("torrents")) {
+            // UPSERT Torrent files so the History list has them (existing rows
+            // get their title/season/episode backfilled on re-play)
+            if (j["media"].contains("torrents") && j["media"]["torrents"].is_array()) {
                 for (const auto& t : j["media"]["torrents"]) {
-                    media::database::TorrentInfo tinfo;
-                    tinfo.media_id = media_id;
-                    tinfo.info_hash = t.value("hash", "");
-                    tinfo.magnet_uri = t.value("magnet_uri", "");
-                    tinfo.quality = t.value("quality", "");
-                    tinfo.type = t.value("type", "");
-                    tinfo.size_bytes = t.value("size_bytes", 0LL);
-                    tinfo.seeders = t.value("seeders", 0);
-                    tinfo.leechers = t.value("leechers", 0);
-                    tinfo.source = t.value("source", "Discovery"); // Fallback
-                    tinfo.status = media::database::DownloadStatus::PENDING;
-                    
                     try {
-                        m_db->insertTorrent(tinfo);
-                    } catch (...) { /* Likely already exists */ }
+                        m_db->insertTorrent(parseTorrentFromJson(t, media_id));
+                    } catch (...) { /* Insert/upsert failed — non-fatal */ }
                 }
             }
 
@@ -200,16 +227,7 @@ public:
                 auto torrents = m_db->getTorrentsForMedia(m.id);
                 root["torrents"] = nlohmann::json::array();
                 for (const auto& t : torrents) {
-                    nlohmann::json tj;
-                    tj["quality"] = t.quality;
-                    tj["type"] = t.type;
-                    tj["source"] = t.source;
-                    tj["size_bytes"] = t.size_bytes;
-                    tj["hash"] = t.info_hash;
-                    tj["magnet_uri"] = t.magnet_uri;
-                    tj["seeders"] = t.seeders;
-                    tj["leechers"] = t.leechers;
-                    root["torrents"].push_back(tj);
+                    root["torrents"].push_back(serializeTorrent(t));
                 }
 
                 auto wh = m_db->getWatchHistory(m.id);
@@ -253,23 +271,11 @@ public:
             int media_id = m_db->upsertMediaItem(item);
 
             // UPSERT Torrent files
-            if (j["media"].contains("torrents")) {
+            if (j["media"].contains("torrents") && j["media"]["torrents"].is_array()) {
                 for (const auto& t : j["media"]["torrents"]) {
-                    media::database::TorrentInfo tinfo;
-                    tinfo.media_id = media_id;
-                    tinfo.info_hash = t.value("hash", "");
-                    tinfo.magnet_uri = t.value("magnet_uri", "");
-                    tinfo.quality = t.value("quality", "");
-                    tinfo.type = t.value("type", "");
-                    tinfo.size_bytes = t.value("size_bytes", 0LL);
-                    tinfo.seeders = t.value("seeders", 0);
-                    tinfo.leechers = t.value("leechers", 0);
-                    tinfo.source = t.value("source", "Discovery");
-                    tinfo.status = media::database::DownloadStatus::PENDING;
-                    
                     try {
-                        m_db->insertTorrent(tinfo);
-                    } catch (...) { /* Likely already exists */ }
+                        m_db->insertTorrent(parseTorrentFromJson(t, media_id));
+                    } catch (...) { /* Insert/upsert failed — non-fatal */ }
                 }
             }
 

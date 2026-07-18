@@ -56,6 +56,9 @@ namespace media::database {
         std::string info_hash;
         std::string magnet_uri;
         std::string quality;  // 720p, 1080p, 4K, etc.
+        std::string title;    // full release name (e.g. "Show.S01E02.1080p.WEB.x265")
+        int season = 0;       // series/anime only; 0 = not episode-bound
+        int episode = 0;      // series/anime only; 0 = not episode-bound
         std::string type;     // bluray, web, etc.
         int64_t size_bytes;
         int seeders;

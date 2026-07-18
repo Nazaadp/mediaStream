@@ -37,6 +37,9 @@ class TorrentInfoDto : public oatpp::DTO {
     DTO_FIELD(String, info_hash);
     DTO_FIELD(String, magnet_uri);
     DTO_FIELD(String, quality);
+    DTO_FIELD(String, title);
+    DTO_FIELD(Int32, season);
+    DTO_FIELD(Int32, episode);
     DTO_FIELD(String, type);
     DTO_FIELD(Int64, size_bytes);
     DTO_FIELD(Int32, seeders);
@@ -172,6 +175,9 @@ public:
             info.info_hash = row->info_hash ? *row->info_hash : "";
             info.magnet_uri = row->magnet_uri ? *row->magnet_uri : "";
             info.quality = row->quality ? *row->quality : "";
+            info.title = row->title ? *row->title : "";
+            info.season = row->season ? *row->season : 0;
+            info.episode = row->episode ? *row->episode : 0;
             info.type = row->type ? *row->type : "";
             info.size_bytes = row->size_bytes ? *row->size_bytes : 0;
             info.seeders = row->seeders ? *row->seeders : 0;
@@ -268,6 +274,9 @@ public:
                 info_hash TEXT UNIQUE NOT NULL,
                 magnet_uri TEXT NOT NULL,
                 quality TEXT,
+                title TEXT,
+                season INTEGER DEFAULT 0,
+                episode INTEGER DEFAULT 0,
                 type TEXT,
                 size_bytes INTEGER DEFAULT 0,
                 seeders INTEGER DEFAULT 0,
@@ -354,6 +363,13 @@ public:
         // Add last_season / last_episode to watch_history (migration for existing DBs)
         try { m_impl->executeSQL("ALTER TABLE watch_history ADD COLUMN last_season INTEGER"); } catch (...) {}
         try { m_impl->executeSQL("ALTER TABLE watch_history ADD COLUMN last_episode INTEGER"); } catch (...) {}
+
+        // Add title / season / episode to torrents (migration for existing DBs).
+        // title = full release name; season/episode let the client resolve
+        // "which episode is this torrent" without regex-matching names.
+        try { m_impl->executeSQL("ALTER TABLE torrents ADD COLUMN title TEXT"); } catch (...) {}
+        try { m_impl->executeSQL("ALTER TABLE torrents ADD COLUMN season INTEGER DEFAULT 0"); } catch (...) {}
+        try { m_impl->executeSQL("ALTER TABLE torrents ADD COLUMN episode INTEGER DEFAULT 0"); } catch (...) {}
 
         spdlog::info("Database schema created successfully");
     }
@@ -579,14 +595,30 @@ public:
     int Database::insertTorrent(const TorrentInfo& torrent) {
         auto now = std::chrono::system_clock::now().time_since_epoch().count();
         
-        auto result = m_impl->client->executeQuery(oatpp::String("INSERT INTO torrents (media_id, info_hash, magnet_uri, quality, type, size_bytes, seeders, "
+        // Upsert on info_hash: a torrent replayed later (e.g. once title/season/
+        // episode are known) refreshes its metadata instead of being dropped by
+        // the UNIQUE constraint. Engine-managed fields (status, progress,
+        // file_path) are left untouched; title/season/episode only overwrite
+        // when the incoming value is meaningful, so a metadata-less save never
+        // wipes previously stored data.
+        auto result = m_impl->client->executeQuery(oatpp::String("INSERT INTO torrents (media_id, info_hash, magnet_uri, quality, title, season, episode, type, size_bytes, seeders, "
             "leechers, source, status, progress, file_path, created_at, updated_at) "
-            "VALUES (:media_id, :info_hash, :magnet_uri, :quality, :type, :size_bytes, :seeders, "
-            ":leechers, :source, :status, :progress, :file_path, :created_at, :updated_at)"), std::unordered_map<oatpp::String, oatpp::Void>{
+            "VALUES (:media_id, :info_hash, :magnet_uri, :quality, :title, :season, :episode, :type, :size_bytes, :seeders, "
+            ":leechers, :source, :status, :progress, :file_path, :created_at, :updated_at) "
+            "ON CONFLICT(info_hash) DO UPDATE SET "
+            "title = CASE WHEN excluded.title != '' THEN excluded.title ELSE torrents.title END, "
+            "season = CASE WHEN excluded.season > 0 THEN excluded.season ELSE torrents.season END, "
+            "episode = CASE WHEN excluded.episode > 0 THEN excluded.episode ELSE torrents.episode END, "
+            "seeders = excluded.seeders, "
+            "leechers = excluded.leechers, "
+            "updated_at = excluded.updated_at"), std::unordered_map<oatpp::String, oatpp::Void>{
                 {"media_id", oatpp::Int32(torrent.media_id)},
                 {"info_hash", oatpp::String(torrent.info_hash)},
                 {"magnet_uri", oatpp::String(torrent.magnet_uri)},
                 {"quality", oatpp::String(torrent.quality)},
+                {"title", oatpp::String(torrent.title)},
+                {"season", oatpp::Int32(torrent.season)},
+                {"episode", oatpp::Int32(torrent.episode)},
                 {"type", oatpp::String(torrent.type)},
                 {"size_bytes", oatpp::Int64(torrent.size_bytes)},
                 {"seeders", oatpp::Int32(torrent.seeders)},
