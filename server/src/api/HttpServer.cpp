@@ -101,7 +101,7 @@ namespace media::api {
             auto connectionProvider = oatpp::network::tcp::server::ConnectionProvider::createShared({"127.0.0.1", 8000, oatpp::network::Address::IP_4});
 
             // 1. Register API Controllers
-            auto torrentController = std::make_shared<TorrentController>(objectMapper, m_engine);
+            auto torrentController = std::make_shared<TorrentController>(objectMapper, m_engine, m_db);
             router->addController(torrentController);
 
             auto streamController = std::make_shared<StreamController>(objectMapper, m_engine);
@@ -142,6 +142,9 @@ namespace media::api {
     void HttpServer::run_ws_broadcaster() {
         auto objectMapper = oatpp::parser::json::mapping::ObjectMapper::createShared();
         oatpp::String last_json = "";
+        // Hashes whose on-disk path is already persisted to the DB this run —
+        // avoids re-querying SQLite every second per torrent.
+        std::unordered_set<std::string> synced_paths;
 
         while (m_should_run) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
@@ -175,6 +178,22 @@ namespace media::api {
                         response_list->push_back(dto);
                     }
                     
+                    // Persist each torrent's on-disk path once its metadata is
+                    // known, so DELETE can still clean up the files after a
+                    // restart drops the torrent from the libtorrent session.
+                    for (const auto& item : engine_status) {
+                        if (item.filename.empty() || synced_paths.count(item.info_hash)) continue;
+                        auto record = m_db->getTorrentByHash(item.info_hash);
+                        if (!record) continue; // row appears once the client links media
+                        if (record->file_path.empty()) {
+                            auto path = m_engine->getLargestFilePath(item.info_hash);
+                            if (!path) continue;
+                            m_db->updateTorrentFilePath(record->id, *path);
+                            spdlog::info("Persisted file path for torrent {}", item.info_hash);
+                        }
+                        synced_paths.insert(item.info_hash);
+                    }
+
                     auto json = objectMapper->writeToString(response_list);
                     // Always broadcast when torrents are active (do NOT dedup by JSON equality).
                     // If we only broadcast on change, the "Fetching Metadata" phase (progress=0 for many

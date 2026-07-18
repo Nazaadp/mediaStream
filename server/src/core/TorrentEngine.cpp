@@ -112,14 +112,14 @@ namespace media::core {
     }
 
     // --- REMOVE TORRENT ---
-    void TorrentEngine::removeTorrent(const std::string& info_hash_str) {
+    bool TorrentEngine::removeTorrent(const std::string& info_hash_str) {
         std::vector<lt::torrent_handle> handles = m_session.get_torrents();
-        
+
         for (auto& h : handles) {
             if (!h.is_valid()) continue;
-            
+
             std::string current_hash = to_hex_string(h.info_hash());
-            
+
             if (current_hash == info_hash_str) {
                 m_session.remove_torrent(h, lt::session::delete_files);
                 {
@@ -134,10 +134,44 @@ namespace media::core {
                     }
                 }
                 spdlog::info("Torrent removed with files: {}", info_hash_str);
-                return;
+                return true;
             }
         }
-        throw std::runtime_error("Torrent not found");
+        // Not in the current session — files may still exist on disk from a
+        // previous run; the caller decides whether to deleteDownloadedData().
+        return false;
+    }
+
+    // --- DELETE DOWNLOADED DATA (out-of-session fallback) ---
+    bool TorrentEngine::deleteDownloadedData(const std::string& file_path) {
+        namespace fs = std::filesystem;
+        if (file_path.empty()) return false;
+
+        std::error_code ec;
+        const fs::path root = fs::weakly_canonical(m_download_dir, ec);
+        if (ec) return false;
+        const fs::path target = fs::weakly_canonical(fs::path(file_path), ec);
+        if (ec) return false;
+
+        // Safety: only ever delete entries strictly inside the download dir.
+        const fs::path rel = target.lexically_relative(root);
+        if (rel.empty() || rel == "." || *rel.begin() == "..") {
+            spdlog::warn("deleteDownloadedData: refusing path outside download dir");
+            return false;
+        }
+
+        // Remove the torrent's whole top-level entry (folder or single file),
+        // not just the largest file — extras/subs would otherwise linger.
+        const fs::path top = root / *rel.begin();
+        const auto removed = fs::remove_all(top, ec);
+        if (ec) {
+            spdlog::error("deleteDownloadedData: remove failed: {}", ec.message());
+            return false;
+        }
+        if (removed > 0) {
+            spdlog::info("Deleted downloaded data ({} entries): {}", removed, top.string());
+        }
+        return removed > 0;
     }
 
     // --- PROACTIVE MOOV ATOM BOOST ---

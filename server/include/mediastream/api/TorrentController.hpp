@@ -5,7 +5,8 @@
 #include "oatpp/core/macro/component.hpp"
 
 #include "mediastream/core/TorrentEngine.hpp"
-#include "mediastream/api/DTOs.hpp" 
+#include "mediastream/database/Database.hpp"
+#include "mediastream/api/DTOs.hpp"
 #include <spdlog/spdlog.h>
 
 namespace media::api {
@@ -15,12 +16,15 @@ namespace media::api {
 class TorrentController : public oatpp::web::server::api::ApiController {
 private:
     std::shared_ptr<media::core::TorrentEngine> m_engine;
+    std::shared_ptr<media::database::Database> m_db;
 
 public:
-    TorrentController(const std::shared_ptr<ObjectMapper>& objectMapper, 
-                      std::shared_ptr<media::core::TorrentEngine> engine)
+    TorrentController(const std::shared_ptr<ObjectMapper>& objectMapper,
+                      std::shared_ptr<media::core::TorrentEngine> engine,
+                      std::shared_ptr<media::database::Database> db)
         : oatpp::web::server::api::ApiController(objectMapper)
-        , m_engine(engine) 
+        , m_engine(engine)
+        , m_db(db)
     {}
 
     // --- OPTIONS CORS endpoints ---
@@ -108,12 +112,29 @@ public:
     {
         try {
             spdlog::info("API: Removing torrent: {}", infoHash->c_str());
-            m_engine->removeTorrent(infoHash);
-            
-            auto response = MessageDto::createShared();
-            response->status_code = 200;
-            response->message = "Torrent removed";
-            return createDtoResponse(Status::CODE_200, response);
+
+            if (m_engine->removeTorrent(infoHash)) {
+                auto response = MessageDto::createShared();
+                response->status_code = 200;
+                response->message = "Torrent removed";
+                return createDtoResponse(Status::CODE_200, response);
+            }
+
+            // Not in the live session — typically downloaded before a server
+            // restart. Resolve the on-disk location from the DB and delete
+            // the data directly so orphaned files can't fill the disk.
+            auto record = m_db->getTorrentByHash(infoHash->c_str());
+            if (record && m_engine->deleteDownloadedData(record->file_path)) {
+                auto response = MessageDto::createShared();
+                response->status_code = 200;
+                response->message = "Torrent data deleted from disk";
+                return createDtoResponse(Status::CODE_200, response);
+            }
+
+            auto err = MessageDto::createShared();
+            err->status_code = 404;
+            err->message = "Torrent not found";
+            return createDtoResponse(Status::CODE_404, err);
         } catch (const std::exception& e) {
             spdlog::error("API Error: {}", e.what());
             auto err = MessageDto::createShared();

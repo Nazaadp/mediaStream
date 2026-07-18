@@ -40,7 +40,14 @@ namespace media::core {
 
         // Core Actions
         void addMagnet(const std::string& magnet_uri);
-        void removeTorrent(const std::string& info_hash);
+        // Removes the torrent and its files from the live session.
+        // Returns false when the hash is not in the session (e.g. it was added
+        // before a restart) — caller may fall back to deleteDownloadedData().
+        bool removeTorrent(const std::string& info_hash);
+        // Out-of-session cleanup: deletes the downloaded data that contains
+        // file_path (as persisted in the DB). Removes the torrent's whole
+        // top-level entry under the download dir; refuses paths outside it.
+        bool deleteDownloadedData(const std::string& file_path);
         
         // Status
         [[nodiscard]] std::vector<TorrentStatus> getSessionStatus() const;

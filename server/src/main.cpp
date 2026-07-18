@@ -2,6 +2,7 @@
 #include <thread>
 #include <chrono>
 #include <csignal>
+#include <cstdlib>
 #include <atomic>
 #include <filesystem>
 
@@ -85,7 +86,14 @@ int main() {
 
         // 2. The Core (Domain)
         spdlog::info("Booting Core...");
-        auto engine = std::make_shared<media::core::TorrentEngine>("./downloads");
+        // Resolved to an absolute path so the storage location never depends on
+        // the working directory the service was launched from. Override with
+        // MEDIASTREAM_DOWNLOAD_DIR (e.g. Environment= in the systemd unit).
+        const char* dl_env = std::getenv("MEDIASTREAM_DOWNLOAD_DIR");
+        const auto download_dir =
+            std::filesystem::absolute(dl_env && *dl_env ? dl_env : "./downloads");
+        spdlog::info("Download directory: {}", download_dir.string());
+        auto engine = std::make_shared<media::core::TorrentEngine>(download_dir);
 
         // 3. The Services
         spdlog::info("Booting Services...");
