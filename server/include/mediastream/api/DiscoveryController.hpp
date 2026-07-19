@@ -21,9 +21,10 @@ namespace media::api {
 class DiscoveryController : public oatpp::web::server::api::ApiController {
 private:
     // Max catalog items returned per movies/series/anime/search request.
-    // Kept low to limit per-item TMDB enrichment calls and raw-response log
-    // volume during debugging. Bump back up once parsing work is done.
-    static constexpr int CATALOG_PAGE_LIMIT = 10;
+    // The client appends pages of this size on load-more, and TMDBCatalogClient
+    // maps (limit, page) onto TMDB's fixed 20-item pages so consecutive pages
+    // are contiguous — no gaps, no duplicates.
+    static constexpr int CATALOG_PAGE_LIMIT = 15;
 
     std::shared_ptr<media::services::ContentDiscoveryManager> m_discovery;
 

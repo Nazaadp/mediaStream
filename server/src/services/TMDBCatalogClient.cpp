@@ -2,6 +2,8 @@
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
+#include <algorithm>
+#include <cstddef>
 #include <fstream>
 #include <cstdlib>
 
@@ -50,6 +52,8 @@ namespace media::services {
     class TMDBCatalogClient::Impl {
     public:
         std::string m_api_key;
+        // TMDB /discover ignores any limit param and always returns pages of 20.
+        static constexpr int TMDB_PAGE_SIZE = 20;
         const std::string BASE_URL = "https://api.themoviedb.org/3";
         const std::string TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500";
         const std::string TMDB_BACKDROP_BASE = "https://image.tmdb.org/t/p/original";
@@ -124,6 +128,37 @@ namespace media::services {
 
             return items;
         }
+
+        // Serve the client's window [(page-1)*limit, page*limit) from TMDB's
+        // fixed 20-item pages: fetch the TMDB page(s) covering the window and
+        // slice, so consecutive client pages are contiguous. `url_base` must
+        // end with "&page=".
+        std::vector<DiscoveredContent> fetchWindow(const std::string& url_base, int limit, int page, const std::string& log_tag) {
+            if (limit <= 0 || page < 1) {
+                std::string response = tmdbCatHttpGet(url_base + std::to_string(std::max(page, 1)), m_api_key);
+                return parseResults(response, "TMDB");
+            }
+
+            const int offset = (page - 1) * limit;
+            const int first_tmdb_page = offset / TMDB_PAGE_SIZE + 1;
+            const int last_tmdb_page = (offset + limit - 1) / TMDB_PAGE_SIZE + 1;
+
+            std::vector<DiscoveredContent> merged;
+            for (int p = first_tmdb_page; p <= last_tmdb_page; ++p) {
+                std::string url = url_base + std::to_string(p);
+                std::string response = tmdbCatHttpGet(url, m_api_key);
+                auto items = parseResults(response, "TMDB");
+                spdlog::info("TMDB {}: page {} -> {} items", log_tag, p, items.size());
+                if (items.empty()) break; // past the end of the catalog
+                merged.insert(merged.end(), items.begin(), items.end());
+            }
+
+            const auto local_start = static_cast<std::ptrdiff_t>(offset - (first_tmdb_page - 1) * TMDB_PAGE_SIZE);
+            if (local_start >= static_cast<std::ptrdiff_t>(merged.size())) return {};
+            const auto local_end = std::min(local_start + static_cast<std::ptrdiff_t>(limit),
+                                            static_cast<std::ptrdiff_t>(merged.size()));
+            return {merged.begin() + local_start, merged.begin() + local_end};
+        }
     };
 
     TMDBCatalogClient::TMDBCatalogClient() : m_impl(std::make_unique<Impl>()) {
@@ -135,44 +170,38 @@ namespace media::services {
         curl_global_cleanup();
     }
 
-    std::vector<DiscoveredContent> TMDBCatalogClient::fetchPopular(int /*limit*/, int page, const std::string& genre, const std::string& language) {
+    std::vector<DiscoveredContent> TMDBCatalogClient::fetchPopular(int limit, int page, const std::string& genre, const std::string& language) {
         if (m_impl->m_api_key.empty()) return {};
         spdlog::info("Fetching popular movies from TMDB (page {}, genre {}, lang {})...", page, genre, language);
-        
-        std::string url = m_impl->BASE_URL + "/discover/movie?language=en-US&sort_by=popularity.desc&page=" + std::to_string(page);
+
+        std::string url = m_impl->BASE_URL + "/discover/movie?language=en-US&sort_by=popularity.desc";
         if (!genre.empty()) url += "&with_genres=" + genre;
         if (!language.empty()) url += "&with_original_language=" + language;
 
-        std::string response = tmdbCatHttpGet(url, m_impl->m_api_key);
-        spdlog::info("=== RAW RESPONSE [MOVIES / TMDB] {} ===\n{}\n=== END RAW RESPONSE [MOVIES / TMDB] ===", url, response);
-        return m_impl->parseResults(response, "TMDB");
+        return m_impl->fetchWindow(url + "&page=", limit, page, "MOVIES");
     }
 
-    std::vector<DiscoveredContent> TMDBCatalogClient::fetchSeries(int /*limit*/, int page, const std::string& genre, const std::string& language) {
+    std::vector<DiscoveredContent> TMDBCatalogClient::fetchSeries(int limit, int page, const std::string& genre, const std::string& language) {
         if (m_impl->m_api_key.empty()) return {};
         spdlog::info("Fetching popular series from TMDB (page {}, genre {}, lang {})...", page, genre, language);
 
-        std::string url = m_impl->BASE_URL + "/discover/tv?language=en-US&sort_by=popularity.desc&page=" + std::to_string(page);
+        std::string url = m_impl->BASE_URL + "/discover/tv?language=en-US&sort_by=popularity.desc";
         if (!genre.empty()) url += "&with_genres=" + genre;
         if (!language.empty()) url += "&with_original_language=" + language;
 
-        std::string response = tmdbCatHttpGet(url, m_impl->m_api_key);
-        spdlog::info("=== RAW RESPONSE [SERIES / TMDB] {} ===\n{}\n=== END RAW RESPONSE [SERIES / TMDB] ===", url, response);
-        return m_impl->parseResults(response, "TMDB");
+        return m_impl->fetchWindow(url + "&page=", limit, page, "SERIES");
     }
 
-    std::vector<DiscoveredContent> TMDBCatalogClient::fetchAnime(int /*limit*/, int page, const std::string& genre, const std::string& language) {
+    std::vector<DiscoveredContent> TMDBCatalogClient::fetchAnime(int limit, int page, const std::string& genre, const std::string& language) {
         if (m_impl->m_api_key.empty()) return {};
         spdlog::info("Fetching anime from TMDB (page {}, genre {}, lang {})...", page, genre, language);
-        
-        std::string url = m_impl->BASE_URL + "/discover/tv?with_genres=16&with_original_language=ja&sort_by=popularity.desc&page=" + std::to_string(page);
+
+        std::string url = m_impl->BASE_URL + "/discover/tv?with_genres=16&with_original_language=ja&sort_by=popularity.desc";
         // Note: TMDB anime fetch uses fixed genre 16 and JA. We can append additional filters if needed.
         if (!genre.empty()) url += "&with_genres=" + genre;
         if (!language.empty()) url += "&with_original_language=" + language;
 
-        std::string response = tmdbCatHttpGet(url, m_impl->m_api_key);
-        spdlog::info("=== RAW RESPONSE [ANIME / TMDB] {} ===\n{}\n=== END RAW RESPONSE [ANIME / TMDB] ===", url, response);
-        return m_impl->parseResults(response, "TMDB");
+        return m_impl->fetchWindow(url + "&page=", limit, page, "ANIME");
     }
 
     std::vector<DiscoveredContent> TMDBCatalogClient::search(const std::string& query, int /*limit*/, int page, [[maybe_unused]] const std::string& genre, [[maybe_unused]] const std::string& language) {
