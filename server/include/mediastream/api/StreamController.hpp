@@ -18,6 +18,13 @@ class StreamController : public oatpp::web::server::api::ApiController {
 private:
     std::shared_ptr<media::core::TorrentEngine> m_engine;
 
+    // ?file=N → file index inside the torrent; -1 (absent/invalid) = largest.
+    static int parseFileParam(const std::shared_ptr<IncomingRequest>& request) {
+        auto fileParam = request->getQueryParameter("file");
+        if (!fileParam) return -1;
+        try { return std::stoi(fileParam->c_str()); } catch (...) { return -1; }
+    }
+
 public:
     StreamController(const std::shared_ptr<ObjectMapper>& objectMapper, 
                      std::shared_ptr<media::core::TorrentEngine> engine)
@@ -38,13 +45,15 @@ public:
     // codec warning immediately rather than after audio starts on a black screen.
     ENDPOINT_INFO(streamInfo) { info->summary = "Get file metadata for codec pre-check"; }
     ENDPOINT("GET", "/api/v1/stream/{infoHash}/info", streamInfo,
-             PATH(String, infoHash))
+             PATH(String, infoHash),
+             REQUEST(std::shared_ptr<IncomingRequest>, request))
     {
         std::string target_hash = infoHash->c_str();
         std::transform(target_hash.begin(), target_hash.end(), target_hash.begin(),
                        [](unsigned char c){ return std::tolower(c); });
 
-        auto file_path_opt = m_engine->getLargestFilePath(target_hash);
+        // ?file=N — season packs: report on the requested file, not the largest.
+        auto file_path_opt = m_engine->getFilePath(target_hash, parseFileParam(request));
         if (!file_path_opt) {
             return createResponse(Status::CODE_404, "Metadata not yet available");
         }
@@ -85,15 +94,20 @@ public:
         info->summary = "Stream video file with Range support";
     }
     ENDPOINT("GET", "/api/v1/stream/{infoHash}", streamVideo,
-             PATH(String, infoHash), REQUEST(std::shared_ptr<IncomingRequest>, request)) 
+             PATH(String, infoHash), REQUEST(std::shared_ptr<IncomingRequest>, request))
     {
         oatpp::String range = request->getHeader("Range");
-        
+
         std::string target_hash = infoHash->c_str();
         std::transform(target_hash.begin(), target_hash.end(), target_hash.begin(),
                        [](unsigned char c){ return std::tolower(c); });
 
-        auto file_path_opt = m_engine->getLargestFilePath(target_hash);
+        // ?file=N selects which file of a season pack to stream. Without it a
+        // pack always resolved to its largest file — playing "episode 2" of a
+        // pack silently streamed episode 1 (or whatever file was biggest).
+        const int file_index = parseFileParam(request);
+
+        auto file_path_opt = m_engine->getFilePath(target_hash, file_index);
         if (!file_path_opt) {
             return createResponse(Status::CODE_404, "File not found or metadata not downloaded");
         }
@@ -149,7 +163,7 @@ public:
         // (timeout), return 503 Retry-After so the browser re-requests in 2 seconds
         // instead of receiving pre-allocated zeros from the file, which poisons the
         // browser's video decoder and causes videoHeight=0 on loadedmetadata.
-        bool piece_ready = m_engine->waitForPiece(target_hash, start);
+        bool piece_ready = m_engine->waitForPiece(target_hash, start, file_index);
         if (!piece_ready) {
             auto response = createResponse(Status::CODE_503, "Piece not yet available");
             response->putHeader("Retry-After", "2");

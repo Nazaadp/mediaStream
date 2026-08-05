@@ -253,13 +253,22 @@ namespace media::services {
         try { auto r = f_tio.get(); results.insert(results.end(), r.begin(), r.end()); } catch (...) {}
         try { auto r = f_yts.get(); results.insert(results.end(), r.begin(), r.end()); } catch (...) {}
 
-        // Deduplicate by hash, keep highest seeder count
+        // Deduplicate by hash. A file-indexed entry (Torrentio fileIdx) always
+        // beats an unindexed one for the same hash — losing the index would
+        // silently regress packs to largest-file streaming. Seeders only break
+        // ties between equally-indexed entries.
         std::unordered_map<std::string, TorrentQuality> deduped;
         for (const auto& t : results) {
             std::string h = t.hash;
             std::transform(h.begin(), h.end(), h.begin(), ::tolower);
-            if (deduped.find(h) == deduped.end() || t.seeders > deduped[h].seeders)
-                deduped[h] = t;
+            auto it = deduped.find(h);
+            if (it == deduped.end()) { deduped[h] = t; continue; }
+            const bool have_idx = it->second.file_index >= 0;
+            const bool new_idx  = t.file_index >= 0;
+            if ((new_idx && !have_idx) ||
+                (new_idx == have_idx && t.seeders > it->second.seeders)) {
+                it->second = t;
+            }
         }
         results.clear();
         for (const auto& [h, tq] : deduped) results.push_back(tq);
@@ -375,13 +384,21 @@ namespace media::services {
         try { auto r = f_eztv.get(); results.insert(results.end(), r.begin(), r.end()); } catch (...) {}
         try { auto r = f_nyaa.get(); results.insert(results.end(), r.begin(), r.end()); } catch (...) {}
 
-        // Deduplicate by hash
+        // Deduplicate by hash. Same rule as fetchMovieTorrents: an entry
+        // carrying a file index (Torrentio season packs) must never be
+        // displaced by an unindexed twin from EZTV/Nyaa, or the engine loses
+        // the ability to stream the correct episode file.
         std::unordered_map<std::string, TorrentQuality> deduped;
         for (const auto& t : results) {
             std::string h = t.hash;
             std::transform(h.begin(), h.end(), h.begin(), ::tolower);
-            if (deduped.find(h) == deduped.end() || t.seeders > deduped[h].seeders) {
-                deduped[h] = t;
+            auto it = deduped.find(h);
+            if (it == deduped.end()) { deduped[h] = t; continue; }
+            const bool have_idx = it->second.file_index >= 0;
+            const bool new_idx  = t.file_index >= 0;
+            if ((new_idx && !have_idx) ||
+                (new_idx == have_idx && t.seeders > it->second.seeders)) {
+                it->second = t;
             }
         }
         results.clear();

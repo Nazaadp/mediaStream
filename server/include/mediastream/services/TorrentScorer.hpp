@@ -375,6 +375,58 @@ inline std::string buildEztvDailyPattern() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// § 11b  Season-pack detection
+//
+// Decides from the TORRENT-level name (Torrentio title line 1, EZTV/Nyaa
+// title) whether the torrent bundles multiple episodes. Order matters:
+// explicit multi-episode signals win over single-episode markers, because a
+// pack name like "S01E01-E13" contains both.
+//
+//   true:   "Breaking Bad S01-S05 Complete 1080p"     (keyword + range)
+//           "[SubsPlease] Frieren (01-28) [Batch]"    (range + keyword)
+//           "Show S01E01-E08 720p"                    (episode range)
+//           "Show Season 2 1080p" / "Show S02 x265"   (season, no episode)
+//   false:  "Show S01E02 1080p"                       (single episode)
+//           "Show 1x02 HDTV"                          (single episode)
+//           "[SubsPlease] Frieren - 05 (1080p)"       (anime single episode)
+//           "Inception 2010 1080p BluRay"             (movie)
+// ─────────────────────────────────────────────────────────────────────────────
+inline bool looksLikeSeasonPack(const std::string& torrent_name) {
+    const std::string n = normalize(torrent_name);
+
+    // 1. Explicit multi-episode keywords
+    static const std::regex re_kw(
+        R"(\b(?:batch|complete|collection|integrale?|full\s?(?:season|series)|all\s?episodes|duology|trilogy)\b)",
+        std::regex::icase | std::regex::optimize);
+    // 2. Season ranges: "S01-S05", "S01-05", "Seasons 1-5"
+    static const std::regex re_srange(
+        R"(\bS\d{1,2}\s*-\s*S?\d{1,2}\b|\bseasons?\s+\d{1,2}\s*-\s*\d{1,2}\b)",
+        std::regex::icase | std::regex::optimize);
+    // 3. Episode ranges: "E01-E13", "(01-24)", "[01~24]"
+    static const std::regex re_erange(
+        R"(\bE\d{1,3}\s*[-~]\s*E?\d{1,3}\b|[\[\(]\s*\d{1,3}\s*[-~]\s*\d{1,3}\s*[\]\)])",
+        std::regex::icase | std::regex::optimize);
+    if (std::regex_search(n, re_kw) || std::regex_search(n, re_srange) ||
+        std::regex_search(n, re_erange)) {
+        return true;
+    }
+
+    // 4. Single-episode markers → definitively NOT a pack
+    //    SxxEyy | NxNN | "E05"/"Ep 5" | anime "- 05" (max 3 digits so years
+    //    like "- 2015" can't match)
+    static const std::regex re_single(
+        R"(\bS\d{1,2}\s*E\d{1,3}\b|\b\d{1,2}x\d{2,3}\b|\bEp?\.?\s?\d{1,3}\b|(?:^|\s)-\s\d{1,3}(?:v\d)?(?:\s|$))",
+        std::regex::icase | std::regex::optimize);
+    if (std::regex_search(n, re_single)) return false;
+
+    // 5. Season mentioned with no episode marker: "Season 2", bare "S02"
+    static const std::regex re_season_only(
+        R"(\bseason\s*\d{1,2}\b|\bS\d{1,2}\b)",
+        std::regex::icase | std::regex::optimize);
+    return std::regex_search(n, re_season_only);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // § 12  Full pipeline helpers for ContentDiscoveryManager
 //
 // enrichAndScore(results)

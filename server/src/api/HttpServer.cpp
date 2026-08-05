@@ -175,6 +175,7 @@ namespace media::api {
                         dto->filename  = item.filename.empty()  ? nullptr : oatpp::String(item.filename);
                         dto->size_bytes = item.size_bytes;
                         dto->mime_type = item.mime_type.empty() ? nullptr : oatpp::String(item.mime_type);
+                        dto->file_index = item.file_index;
                         response_list->push_back(dto);
                     }
                     

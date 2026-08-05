@@ -273,6 +273,12 @@ namespace media::services {
                 tq.audio_languages    = parseNyaaAudioLangs(full_title);
                 tq.subtitle_languages = parseTorrentSubtitleLangs(full_title);
 
+                // Nyaa batches ("(01-24)", "[Batch]") bundle whole seasons but
+                // carry no file index — flag them so the client can badge them
+                // and the engine's largest-file fallback is at least explicit.
+                tq.file_name = full_title;
+                tq.is_pack   = TorrentScorer::looksLikeSeasonPack(full_title);
+
                 // Parse resolution/codec/HDR from the RSS title; rewrites quality.
                 TorrentScorer::enrich(tq, full_title);
 

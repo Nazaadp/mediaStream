@@ -62,6 +62,10 @@ private:
         tj["magnet_uri"] = t.magnet_uri;
         tj["seeders"] = t.seeders;
         tj["leechers"] = t.leechers;
+        // Which file inside the torrent this row refers to (-1 = largest) —
+        // resuming episode 2 of a season pack must not re-open episode 1.
+        tj["file_index"] = t.file_index;
+        tj["is_pack"] = t.is_pack;
         // Only meaningful for series/anime episode torrents — 0 means "not
         // episode-bound", which the client expects as an absent field.
         if (t.season > 0) tj["season"] = t.season;
@@ -87,6 +91,9 @@ private:
         tinfo.title = jsonStr(t, "title");
         tinfo.season = jsonInt(t, "season");
         tinfo.episode = jsonInt(t, "episode");
+        tinfo.file_index = jsonInt(t, "file_index", -1);
+        tinfo.is_pack = t.contains("is_pack") && t["is_pack"].is_boolean()
+            && t["is_pack"].get<bool>();
         return tinfo;
     }
 

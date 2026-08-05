@@ -40,6 +40,8 @@ class TorrentInfoDto : public oatpp::DTO {
     DTO_FIELD(String, title);
     DTO_FIELD(Int32, season);
     DTO_FIELD(Int32, episode);
+    DTO_FIELD(Int32, file_index);
+    DTO_FIELD(Int32, is_pack);
     DTO_FIELD(String, type);
     DTO_FIELD(Int64, size_bytes);
     DTO_FIELD(Int32, seeders);
@@ -94,6 +96,11 @@ class IntResultDto : public oatpp::DTO {
 class Int64ResultDto : public oatpp::DTO {
     DTO_INIT(Int64ResultDto, DTO)
     DTO_FIELD(Int64, value);
+};
+
+class TextResultDto : public oatpp::DTO {
+    DTO_INIT(TextResultDto, DTO)
+    DTO_FIELD(String, value);
 };
 
 #include OATPP_CODEGEN_END(DTO)
@@ -178,6 +185,8 @@ public:
             info.title = row->title ? *row->title : "";
             info.season = row->season ? *row->season : 0;
             info.episode = row->episode ? *row->episode : 0;
+            info.file_index = row->file_index ? *row->file_index : -1;
+            info.is_pack = row->is_pack ? (*row->is_pack != 0) : false;
             info.type = row->type ? *row->type : "";
             info.size_bytes = row->size_bytes ? *row->size_bytes : 0;
             info.seeders = row->seeders ? *row->seeders : 0;
@@ -266,17 +275,22 @@ public:
             )
         )");
 
-        // Torrents Table
+        // Torrents Table.
+        // Uniqueness is (info_hash, file_index), NOT info_hash alone: season
+        // packs register one row per episode file under the same infohash —
+        // a hash-only constraint made episode 2's row overwrite episode 1's.
         m_impl->executeSQL(R"(
             CREATE TABLE IF NOT EXISTS torrents (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 media_id INTEGER NOT NULL,
-                info_hash TEXT UNIQUE NOT NULL,
+                info_hash TEXT NOT NULL,
                 magnet_uri TEXT NOT NULL,
                 quality TEXT,
                 title TEXT,
                 season INTEGER DEFAULT 0,
                 episode INTEGER DEFAULT 0,
+                file_index INTEGER DEFAULT -1,
+                is_pack INTEGER DEFAULT 0,
                 type TEXT,
                 size_bytes INTEGER DEFAULT 0,
                 seeders INTEGER DEFAULT 0,
@@ -287,7 +301,8 @@ public:
                 file_path TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
-                FOREIGN KEY (media_id) REFERENCES media_items(id) ON DELETE CASCADE
+                FOREIGN KEY (media_id) REFERENCES media_items(id) ON DELETE CASCADE,
+                UNIQUE(info_hash, file_index)
             )
         )");
 
@@ -371,7 +386,95 @@ public:
         try { m_impl->executeSQL("ALTER TABLE torrents ADD COLUMN season INTEGER DEFAULT 0"); } catch (...) {}
         try { m_impl->executeSQL("ALTER TABLE torrents ADD COLUMN episode INTEGER DEFAULT 0"); } catch (...) {}
 
+        // Add file_index / is_pack (season-pack support, migration for existing DBs)
+        try { m_impl->executeSQL("ALTER TABLE torrents ADD COLUMN file_index INTEGER DEFAULT -1"); } catch (...) {}
+        try { m_impl->executeSQL("ALTER TABLE torrents ADD COLUMN is_pack INTEGER DEFAULT 0"); } catch (...) {}
+
+        migrateTorrentsUniqueConstraint();
+
         spdlog::info("Database schema created successfully");
+    }
+
+    // Legacy DBs declared `info_hash TEXT UNIQUE`, which collapses every
+    // episode of a season pack into one row (same infohash, different file).
+    // SQLite cannot drop a constraint in place, so when the old inline UNIQUE
+    // is still present the table is rebuilt with UNIQUE(info_hash, file_index).
+    // Runs on one pinned connection so the transaction is real (the executor
+    // pools connections; BEGIN/COMMIT on separate executeQuery calls would
+    // land on different handles).
+    void Database::migrateTorrentsUniqueConstraint() {
+        try {
+            auto result = m_impl->client->executeQuery(oatpp::String(
+                "SELECT sql AS value FROM sqlite_master WHERE type='table' AND name='torrents'"),
+                std::unordered_map<oatpp::String, oatpp::Void>{});
+            if (!result->isSuccess()) return;
+            auto dataset = result->fetch<oatpp::Vector<oatpp::Object<TextResultDto>>>();
+            if (!dataset || dataset->empty() || !dataset->front()->value) return;
+
+            const std::string ddl = *dataset->front()->value;
+            if (ddl.find("info_hash TEXT UNIQUE") == std::string::npos) {
+                return; // Already on the composite constraint
+            }
+            spdlog::info("Migrating torrents table to UNIQUE(info_hash, file_index)...");
+
+            auto connection = m_impl->executor->getConnection();
+            auto exec = [&](const char* sql) {
+                auto r = m_impl->client->executeQuery(oatpp::String(sql),
+                    std::unordered_map<oatpp::String, oatpp::Void>{}, connection);
+                if (!r->isSuccess()) {
+                    throw std::runtime_error(std::string("migration step failed: ") + sql);
+                }
+            };
+
+            exec("BEGIN");
+            try {
+                exec(R"(CREATE TABLE torrents_migr (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        media_id INTEGER NOT NULL,
+                        info_hash TEXT NOT NULL,
+                        magnet_uri TEXT NOT NULL,
+                        quality TEXT,
+                        title TEXT,
+                        season INTEGER DEFAULT 0,
+                        episode INTEGER DEFAULT 0,
+                        file_index INTEGER DEFAULT -1,
+                        is_pack INTEGER DEFAULT 0,
+                        type TEXT,
+                        size_bytes INTEGER DEFAULT 0,
+                        seeders INTEGER DEFAULT 0,
+                        leechers INTEGER DEFAULT 0,
+                        source TEXT,
+                        status TEXT DEFAULT 'PENDING',
+                        progress REAL DEFAULT 0.0,
+                        file_path TEXT,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        FOREIGN KEY (media_id) REFERENCES media_items(id) ON DELETE CASCADE,
+                        UNIQUE(info_hash, file_index)
+                    ))");
+                exec("INSERT INTO torrents_migr (id, media_id, info_hash, magnet_uri, quality, title, "
+                     "season, episode, file_index, is_pack, type, size_bytes, seeders, leechers, "
+                     "source, status, progress, file_path, created_at, updated_at) "
+                     "SELECT id, media_id, info_hash, magnet_uri, quality, title, "
+                     "season, episode, COALESCE(file_index, -1), COALESCE(is_pack, 0), type, size_bytes, seeders, leechers, "
+                     "source, status, progress, file_path, created_at, updated_at FROM torrents");
+                exec("DROP TABLE torrents");
+                exec("ALTER TABLE torrents_migr RENAME TO torrents");
+                exec("CREATE INDEX IF NOT EXISTS idx_torrents_hash ON torrents(info_hash)");
+                exec("CREATE INDEX IF NOT EXISTS idx_torrents_media ON torrents(media_id)");
+                exec("CREATE INDEX IF NOT EXISTS idx_torrents_status ON torrents(status)");
+                exec("COMMIT");
+                spdlog::info("Torrents table migration completed");
+            } catch (...) {
+                try {
+                    m_impl->client->executeQuery(oatpp::String("ROLLBACK"),
+                        std::unordered_map<oatpp::String, oatpp::Void>{}, connection);
+                } catch (...) {}
+                throw;
+            }
+        } catch (const std::exception& e) {
+            spdlog::error("Torrents unique-constraint migration failed: {}", e.what());
+        }
     }
 
     void Database::migrate() {
@@ -595,20 +698,23 @@ public:
     int Database::insertTorrent(const TorrentInfo& torrent) {
         auto now = std::chrono::system_clock::now().time_since_epoch().count();
         
-        // Upsert on info_hash: a torrent replayed later (e.g. once title/season/
-        // episode are known) refreshes its metadata instead of being dropped by
-        // the UNIQUE constraint. Engine-managed fields (status, progress,
-        // file_path) are left untouched; title/season/episode only overwrite
-        // when the incoming value is meaningful, so a metadata-less save never
-        // wipes previously stored data.
-        auto result = m_impl->client->executeQuery(oatpp::String("INSERT INTO torrents (media_id, info_hash, magnet_uri, quality, title, season, episode, type, size_bytes, seeders, "
+        // Upsert on (info_hash, file_index): a torrent replayed later (e.g.
+        // once title/season/episode are known) refreshes its metadata instead
+        // of being dropped by the UNIQUE constraint. Season packs get one row
+        // PER FILE — hash-only conflict made episode 2 overwrite episode 1.
+        // Engine-managed fields (status, progress, file_path) are left
+        // untouched; title/season/episode only overwrite when the incoming
+        // value is meaningful, so a metadata-less save never wipes previously
+        // stored data.
+        auto result = m_impl->client->executeQuery(oatpp::String("INSERT INTO torrents (media_id, info_hash, magnet_uri, quality, title, season, episode, file_index, is_pack, type, size_bytes, seeders, "
             "leechers, source, status, progress, file_path, created_at, updated_at) "
-            "VALUES (:media_id, :info_hash, :magnet_uri, :quality, :title, :season, :episode, :type, :size_bytes, :seeders, "
+            "VALUES (:media_id, :info_hash, :magnet_uri, :quality, :title, :season, :episode, :file_index, :is_pack, :type, :size_bytes, :seeders, "
             ":leechers, :source, :status, :progress, :file_path, :created_at, :updated_at) "
-            "ON CONFLICT(info_hash) DO UPDATE SET "
+            "ON CONFLICT(info_hash, file_index) DO UPDATE SET "
             "title = CASE WHEN excluded.title != '' THEN excluded.title ELSE torrents.title END, "
             "season = CASE WHEN excluded.season > 0 THEN excluded.season ELSE torrents.season END, "
             "episode = CASE WHEN excluded.episode > 0 THEN excluded.episode ELSE torrents.episode END, "
+            "is_pack = CASE WHEN excluded.is_pack != 0 THEN excluded.is_pack ELSE torrents.is_pack END, "
             "seeders = excluded.seeders, "
             "leechers = excluded.leechers, "
             "updated_at = excluded.updated_at"), std::unordered_map<oatpp::String, oatpp::Void>{
@@ -619,6 +725,8 @@ public:
                 {"title", oatpp::String(torrent.title)},
                 {"season", oatpp::Int32(torrent.season)},
                 {"episode", oatpp::Int32(torrent.episode)},
+                {"file_index", oatpp::Int32(torrent.file_index)},
+                {"is_pack", oatpp::Int32(torrent.is_pack ? 1 : 0)},
                 {"type", oatpp::String(torrent.type)},
                 {"size_bytes", oatpp::Int64(torrent.size_bytes)},
                 {"seeders", oatpp::Int32(torrent.seeders)},
@@ -632,8 +740,9 @@ public:
             });
 
         if (result->isSuccess()) {
-            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT id AS value FROM torrents WHERE info_hash = :info_hash"), std::unordered_map<oatpp::String, oatpp::Void>{
-                {"info_hash", oatpp::String(torrent.info_hash)}
+            auto idResult = m_impl->client->executeQuery(oatpp::String("SELECT id AS value FROM torrents WHERE info_hash = :info_hash AND file_index = :file_index"), std::unordered_map<oatpp::String, oatpp::Void>{
+                {"info_hash", oatpp::String(torrent.info_hash)},
+                {"file_index", oatpp::Int32(torrent.file_index)}
             });
             if (idResult->isSuccess()) {
                 auto dataset = idResult->fetch<oatpp::Vector<oatpp::Object<IntResultDto>>>();

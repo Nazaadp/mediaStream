@@ -59,6 +59,8 @@ namespace media::database {
         std::string title;    // full release name (e.g. "Show.S01E02.1080p.WEB.x265")
         int season = 0;       // series/anime only; 0 = not episode-bound
         int episode = 0;      // series/anime only; 0 = not episode-bound
+        int file_index = -1;  // file inside the torrent (-1 = single-file/largest)
+        bool is_pack = false; // torrent bundles multiple episodes (season pack)
         std::string type;     // bluray, web, etc.
         int64_t size_bytes;
         int seeders;
@@ -108,6 +110,9 @@ namespace media::database {
         // Initialization
         void initialize();
         void migrate();
+        // Rebuilds the torrents table when the legacy UNIQUE(info_hash)
+        // constraint is present — see implementation for why.
+        void migrateTorrentsUniqueConstraint();
 
         // Media Items
         int insertMediaItem(const MediaItem& item);

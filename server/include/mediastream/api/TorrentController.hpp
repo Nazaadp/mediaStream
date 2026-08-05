@@ -8,6 +8,8 @@
 #include "mediastream/database/Database.hpp"
 #include "mediastream/api/DTOs.hpp"
 #include <spdlog/spdlog.h>
+#include <algorithm>
+#include <cctype>
 
 namespace media::api {
 
@@ -56,8 +58,9 @@ public:
                  return createDtoResponse(Status::CODE_400, err); 
             }
 
-            spdlog::info("API: Adding magnet: {}", dto->magnet_link->c_str());
-            m_engine->addMagnet(dto->magnet_link);
+            const int file_index = dto->file_index ? *dto->file_index : -1;
+            spdlog::info("API: Adding magnet (file_index {}): {}", file_index, dto->magnet_link->c_str());
+            m_engine->addMagnet(dto->magnet_link, file_index);
             
             auto response = MessageDto::createShared();
             response->status_code = 200;
@@ -93,6 +96,7 @@ public:
             dto->filename  = item.filename.empty()  ? nullptr : oatpp::String(item.filename);
             dto->size_bytes = item.size_bytes;
             dto->mime_type = item.mime_type.empty() ? nullptr : oatpp::String(item.mime_type);
+            dto->file_index = item.file_index;
             response_list->push_back(dto);
         }
 
@@ -108,12 +112,26 @@ public:
         info->addResponse<Object<MessageDto>>(Status::CODE_404, "application/json");
     }
     ENDPOINT("DELETE", "/api/v1/torrents/{infoHash}", removeTorrent,
-             PATH(String, infoHash)) // <--- Capture URL variable
+             PATH(String, infoHash), // <--- Capture URL variable
+             REQUEST(std::shared_ptr<IncomingRequest>, request))
     {
         try {
-            spdlog::info("API: Removing torrent: {}", infoHash->c_str());
+            // libtorrent reports lowercase hashes; some sources (YTS) are
+            // uppercase — normalize so the engine's exact-match comparison works.
+            std::string target_hash = infoHash->c_str();
+            std::transform(target_hash.begin(), target_hash.end(), target_hash.begin(),
+                           [](unsigned char c){ return std::tolower(c); });
 
-            if (m_engine->removeTorrent(infoHash)) {
+            // ?file=N — remove one file of a season pack. Whole torrent when absent.
+            int file_index = -1;
+            auto fileParam = request->getQueryParameter("file");
+            if (fileParam) {
+                try { file_index = std::stoi(fileParam->c_str()); } catch (...) {}
+            }
+
+            spdlog::info("API: Removing torrent: {} (file {})", target_hash, file_index);
+
+            if (m_engine->removeTorrent(target_hash, file_index)) {
                 auto response = MessageDto::createShared();
                 response->status_code = 200;
                 response->message = "Torrent removed";

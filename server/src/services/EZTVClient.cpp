@@ -267,6 +267,12 @@ namespace media::services {
                     tq.hash       = t.value("hash", "");
                     tq.magnet_uri = t.value("magnet_url", "");
 
+                    // EZTV gives no file index — a pack streams via the
+                    // largest-file fallback, but flagging it lets the client
+                    // badge it and prefer Torrentio's indexed twin on dedup.
+                    tq.file_name = parse_name;
+                    tq.is_pack   = TorrentScorer::looksLikeSeasonPack(t_title);
+
                     // Parse resolution/codec/HDR/release from the release name and
                     // rewrite the legacy quality string (was hard-coded "720p").
                     TorrentScorer::enrich(tq, parse_name);

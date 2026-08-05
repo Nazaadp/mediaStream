@@ -25,6 +25,16 @@ namespace media::services {
         int         seeders{0};
         int         leechers{0};
 
+        // ── Multi-file torrent identity (season packs) ────────────────────────
+        // A season pack lists the SAME infohash for every episode; only the
+        // file inside the torrent differs. file_index carries Torrentio's
+        // fileIdx so the engine can stream/prioritize the right file instead
+        // of defaulting to the largest one. -1 = unknown → largest-file
+        // fallback (single-file torrents, EZTV, Nyaa).
+        int         file_index{-1};
+        std::string file_name;         // per-file release name (fallback matcher)
+        bool        is_pack{false};    // torrent bundles more episodes than the requested one
+
         // ── Parsed metadata (populated by TorrentScorer::enrich) ──────────────
         int         resolution_p{0};   // 4320, 2160, 1080, 720, 576, 480; 0=unknown
         std::string codec;             // "AV1", "HEVC", "x264", "XviD", ""

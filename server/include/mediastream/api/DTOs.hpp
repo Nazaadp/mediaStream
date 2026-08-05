@@ -13,6 +13,9 @@ namespace media::api {
 
         DTO_FIELD(String, magnet_link);
         DTO_FIELD(Boolean, sequential, "sequential_download"); // Optional field
+        // Season packs: which file inside the torrent to download.
+        // Absent/-1 = whole torrent (single-file torrents, legacy clients).
+        DTO_FIELD(Int32, file_index);
     };
 
     // Response Object: A single torrent's status
@@ -26,9 +29,12 @@ namespace media::api {
         DTO_FIELD(Int32, download_rate);
         // File metadata for proactive codec detection on the frontend.
         // Populated once torrent metadata is available (may be null before that).
-        DTO_FIELD(String, filename);   // Largest file basename, e.g. "Movie.x265.mkv"
+        DTO_FIELD(String, filename);   // Target file basename, e.g. "Movie.x265.mkv"
         DTO_FIELD(Int64, size_bytes);  // Pre-allocated file size from torrent metadata
         DTO_FIELD(String, mime_type);  // video/x-matroska, video/mp4, etc.
+        // Which file inside the torrent this entry reports on (-1 = whole
+        // torrent / largest file). Season packs emit one entry per file.
+        DTO_FIELD(Int32, file_index);
     };
 
     // Generic Response

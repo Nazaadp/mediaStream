@@ -85,6 +85,8 @@ private:
                 tj["magnet_uri"] = t.magnet_uri;
                 tj["seeders"] = t.seeders;
                 tj["leechers"] = t.leechers;
+                tj["file_index"] = t.file_index;
+                tj["is_pack"] = t.is_pack;
                 root["torrents"].push_back(tj);
             }
             j_arr.push_back(root);
@@ -208,6 +210,11 @@ public:
                 tj["is_hdr10"]           = t.is_hdr10;
                 tj["is_dv"]              = t.is_dv;
                 tj["score"]              = t.score;
+                // Multi-file identity: which file inside the torrent this
+                // entry refers to (-1 = single-file/largest) + pack flag.
+                tj["file_index"]         = t.file_index;
+                tj["file_name"]          = t.file_name;
+                tj["is_pack"]            = t.is_pack;
                 arr.push_back(tj);
             }
             auto response = createResponse(Status::CODE_200, arr.dump());
@@ -337,6 +344,11 @@ public:
                 tj["is_hdr10"]           = t.is_hdr10;
                 tj["is_dv"]              = t.is_dv;
                 tj["score"]              = t.score;
+                // Multi-file identity: which file inside the torrent this
+                // entry refers to (-1 = single-file/largest) + pack flag.
+                tj["file_index"]         = t.file_index;
+                tj["file_name"]          = t.file_name;
+                tj["is_pack"]            = t.is_pack;
                 arr.push_back(tj);
             }
             auto response = createResponse(Status::CODE_200, arr.dump());

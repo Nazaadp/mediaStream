@@ -153,7 +153,8 @@ namespace media::services {
                         // behaviorHints.filename. Prefer the filename as both the
                         // display title and the parse target; fall back to the
                         // title's first line when no filename is provided.
-                        std::string release_name = parseName(full_title);
+                        const std::string torrent_name = parseName(full_title);
+                        std::string release_name = torrent_name;
                         if (stream.contains("behaviorHints") &&
                             stream["behaviorHints"].contains("filename")) {
                             release_name = stream["behaviorHints"].value("filename", release_name);
@@ -164,6 +165,19 @@ namespace media::services {
                         tq.source  = parseSource(full_title);
                         tq.type    = tq.source;  // keep type in sync for legacy consumers
                         tq.hash = stream.value("infoHash", "");
+
+                        // Season packs share one infohash across every episode
+                        // of the show — fileIdx is the ONLY thing that
+                        // distinguishes "episode 1" from "episode 2" of the
+                        // same pack. Without it the engine streams the largest
+                        // file regardless of which episode was requested.
+                        tq.file_index = (stream.contains("fileIdx") && stream["fileIdx"].is_number_integer())
+                                            ? stream["fileIdx"].get<int>() : -1;
+                        tq.file_name  = release_name;
+                        // Pack detection runs on the TORRENT-level name (line 1
+                        // of the title block), not the per-file name — the
+                        // per-file name always looks like a single episode.
+                        tq.is_pack = TorrentScorer::looksLikeSeasonPack(torrent_name);
                         tq.size_bytes = parseSizeStr(full_title);
                         tq.seeders = parseSeeders(full_title);
                         tq.leechers = 0; // Not provided by Torrentio
