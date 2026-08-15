@@ -25,6 +25,23 @@ namespace media::services {
     }
     namespace {
 
+        // Parser health for TorrentScorer::parse (§ 13). One aggregate line per
+        // request plus the offending names, all at debug level so production
+        // info logs stay quiet (CODESTYLE § 1.7). `ctx` is a fixed literal —
+        // keep it that way, the message shape must stay low-cardinality.
+        void logParseMisses(const char* ctx, const std::vector<TorrentQuality>& v) {
+            size_t no_title = 0, no_episode = 0;
+            for (const auto& t : v) {
+                if (t.parsed_title.empty()) {
+                    ++no_title;
+                    spdlog::debug("parser miss: {}", t.title);
+                }
+                if (t.season == 0 && t.episode == 0) ++no_episode;
+            }
+            spdlog::debug("parser [{}]: {} names, {} no-title, {} no-episode",
+                          ctx, v.size(), no_title, no_episode);
+        }
+
         void enrichAndDeduplicate(std::vector<DiscoveredContent>& list, TMDBFetcher* tmdb, TorrentioClient* tio) {
             std::vector<std::future<void>> futures;
             spdlog::info("Asynchronously enriching {} items...", list.size());
@@ -285,6 +302,7 @@ namespace media::services {
         // Keep only the top-ranked torrents to bound output and log volume.
         if (results.size() > MAX_TORRENTS_PER_ITEM) results.resize(MAX_TORRENTS_PER_ITEM);
 
+        logParseMisses("movie", results);
         spdlog::info("fetchMovieTorrents: {} for {} (filtered from {})", results.size(), imdb_id, pre_filter);
         return results;
     }
@@ -414,6 +432,7 @@ namespace media::services {
         // Keep only the top-ranked torrents to bound output and log volume.
         if (results.size() > MAX_TORRENTS_PER_ITEM) results.resize(MAX_TORRENTS_PER_ITEM);
 
+        logParseMisses("episode", results);
         spdlog::info("fetchEpisodeTorrents: {} for {} S{:02d}E{:02d} (filtered from {})",
                      results.size(), imdb_id, season, episode, pre_filter);
         return results;

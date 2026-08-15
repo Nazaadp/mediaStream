@@ -105,6 +105,10 @@ namespace media::services {
                             tq.hash = torrent.value("hash", "");
                             tq.seeders = torrent.value("seeds", 0);
                             tq.leechers = torrent.value("peers", 0);
+                            // Structured path: YTS gives the year as JSON, so the
+                            // § 13 name parser never runs on YTS titles.
+                            tq.parsed_title = content.title;
+                            tq.year         = content.year;
 
                             // Structured quality enrichment — YTS exposes codec
                             // and bit-depth as JSON fields (not in the title), so

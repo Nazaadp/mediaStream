@@ -46,6 +46,16 @@ namespace media::services {
         bool        is_webdl{false};   // WEB-DL / WEBMux
         bool        is_cam{false};     // CAM / TS / TeleSync — garbage tier
         int         score{0};          // Computed quality score (higher = better)
+
+        // ── Structured parse results (TorrentScorer::parse, via enrich) ───────
+        // Additive: brace-init defaults keep every existing consumer compiling
+        // and behaving identically. Nothing is serialized yet.
+        std::string parsed_title;      // clean title; "" = parse failed, use `title`
+        int         year{0};           // 0 = none found
+        int         season{0};         // 0 = none
+        int         episode{0};        // 0 = none
+        int         episode_end{0};    // >0 = multi-episode range (pack)
+        std::string release_group;     // "SubsPlease", "SPARKS", "" = unknown
     };
 
     // ── Torrent name language helpers (used by all clients) ──────────────────

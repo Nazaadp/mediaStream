@@ -22,6 +22,8 @@
 #include <cmath>
 #include <regex>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace media::services::TorrentScorer {
 
@@ -220,6 +222,28 @@ inline void enrichFromYTS(TorrentQuality& tq,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// § 13a  Structured name parsing — type + forward declaration
+//
+// The implementation is § 13 at the end of this file. § 8 enrich() calls
+// parse(), so the complete type and the signature must already be visible here;
+// an inline function may be declared before it is defined in the same TU.
+// ─────────────────────────────────────────────────────────────────────────────
+struct ParsedName {
+    std::string title;           // clean human title; "" = extraction failed
+    int         year{0};         // 0 = none found
+    int         season{0};       // 0 = none
+    int         season_end{0};   // >0 only for season ranges (S01-S05) ⇒ pack
+    int         episode{0};      // 0 = none
+    int         episode_end{0};  // >0 only for ranges (S01E01-E13, (01-24)) ⇒ pack
+    int         resolution_p{0}; // height from a "WxH" or "NNNNp" token; 0 = none
+    bool        is_daily{false};
+    std::string air_date;        // "YYYY-MM-DD" when is_daily
+    std::string release_group;   // "SubsPlease" (leading [..]) / "SPARKS" (trailing -..)
+};
+
+inline ParsedName parse(const std::string& raw_name);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // § 8  Generic enrichment (Torrentio / EZTV / Nyaa)
 //
 // parse_name: the richest name available for this torrent.
@@ -239,6 +263,28 @@ inline void enrich(TorrentQuality& tq, const std::string& parse_name) {
     parseReleaseType(norm, tq.is_remux, tq.is_bluray, tq.is_webdl);
 
     tq.is_cam = isGarbage(norm);
+
+    // Structured capture (§ 13). Single entry point: Torrentio, EZTV and Nyaa
+    // all get title/year/season/episode/group for free, no client edits.
+    const ParsedName p = parse(parse_name);
+    tq.parsed_title  = p.title;
+    tq.year          = p.year;
+    tq.season        = p.season;
+    tq.episode       = p.episode;
+    tq.episode_end   = p.episode_end;
+    tq.release_group = p.release_group;
+
+    // "1920x1080" carries a resolution the § 2 "NNNNp" tokens miss. Fallback
+    // only — never overrides a value parseResolution() already found.
+    if (tq.resolution_p == 0) tq.resolution_p = p.resolution_p;
+
+    // An explicit episode or season RANGE proves the torrent bundles more than
+    // one episode. looksLikeSeasonPack() (§ 11b, run by the clients on the
+    // TORRENT-level name) stays as the independent second opinion — OR, never
+    // overwrite: the per-file name of a pack always looks single-episode.
+    tq.is_pack = tq.is_pack ||
+                 (p.episode > 0 && p.episode_end > p.episode) ||
+                 (p.season  > 0 && p.season_end  > p.season);
 
     // Sync legacy "quality" string if not already set from structured data
     if (tq.quality.empty() || tq.quality == tq.title) {
@@ -472,6 +518,353 @@ inline void scoreAndSort(std::vector<TorrentQuality>& results) {
         results.end());
 
     std::sort(results.begin(), results.end(), better);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// § 13  Structured name parsing — implementation (type declared in § 13a)
+//
+// Strategy: subtractive isolation with masking. Work on normalize(raw_name),
+// and every time an entity is extracted, overwrite its span with SPACES rather
+// than erasing it — indices stay stable, so `first_struct` (the smallest start
+// index of any STRUCTURAL match) keeps meaning the same thing throughout, and
+// later steps cannot re-match what an earlier step already claimed.
+//
+//   title = cleaned prefix [0, first_struct)
+//
+// "Structural" = a token that can only be metadata, so everything from it to
+// the end of the name is metadata too. A leading "[Group]" and a title that
+// happens to be a year are deliberately NOT structural.
+//
+// Extraction order is load-bearing:
+//   1 leading [Group]  – gates the anime absolute-episode rule (step 5, last)
+//   2 WxH resolution   – before year, or "1920x1080" donates the year 1920
+//                        (and it is why "1x02" in step 5c is safe)
+//   3 NNNNp resolution – value from parseResolution(), span masked here
+//   4 daily date       – before year, which would otherwise eat its year part
+//   5 season/episode   – first alternative that hits wins
+//   6 year             – last match wins (scene rule: title precedes year)
+//   7 technical tokens – codec/HDR/source/audio/language/edition vocabulary
+//   8 trailing -GROUP  – matched on the UNMASKED name (see the comment there)
+//   9 title assembly
+// ─────────────────────────────────────────────────────────────────────────────
+namespace detail {
+
+// Overwrites [pos, pos+len) with spaces. Length-preserving on purpose: masking
+// must not shift any index that first_struct or a later match may refer to.
+inline void maskSpan(std::string& s, size_t pos, size_t len) {
+    const size_t end = std::min(s.size(), pos + len);
+    for (size_t i = pos; i < end; ++i) s[i] = ' ';
+}
+
+// Only these pixel heights are resolutions. Guards the WxH form against
+// arbitrary "NNNxNNN" numbers that are not a video mode.
+inline int heightToResolution(int h) {
+    switch (h) {
+        case 4320: case 2160: case 1080: case 720: case 576: case 480: return h;
+        default: return 0;
+    }
+}
+
+// Drops bracket characters left behind by masking, collapses whitespace and
+// trims orphan separators. Internal hyphens survive — "9-1-1" is a real title.
+inline std::string cleanTitle(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    bool prev_space = true;
+    for (char c : s) {
+        const bool sep = (c == '[' || c == ']' || c == '(' || c == ')' ||
+                          c == '{' || c == '}' || c == ' ' || c == '\t');
+        if (sep) {
+            if (!prev_space) { out += ' '; prev_space = true; }
+        } else {
+            out += c;
+            prev_space = false;
+        }
+    }
+    while (!out.empty() && (out.back() == ' ' || out.back() == '-' ||
+                            out.back() == '_' || out.back() == ',' ||
+                            out.back() == ':')) {
+        out.pop_back();
+    }
+    size_t b = 0;
+    while (b < out.size() && (out[b] == ' ' || out[b] == '-' || out[b] == '_')) ++b;
+    return out.substr(b);
+}
+
+} // namespace detail
+
+inline ParsedName parse(const std::string& raw_name) {
+    ParsedName p;
+
+    // `original` keeps the un-masked view; step 8 needs it.
+    const std::string original = normalize(raw_name);
+    std::string work = original;
+
+    size_t first_struct = std::string::npos;
+    const auto markStruct = [&first_struct](size_t pos) {
+        if (pos < first_struct) first_struct = pos;
+    };
+
+    std::smatch m;
+
+    // ── 1. Leading bracket group (fansub convention) ─────────────────────────
+    // "[SubsPlease] Show - 05 ..." — NOT structural: the title comes AFTER it,
+    // so cutting here would leave nothing. 2..32 chars rejects "[]" and the
+    // long bracketed tag dumps that trail anime names.
+    static const std::regex re_lead_group(
+        R"(^\s*\[([^\]]{2,32})\])",
+        std::regex::icase | std::regex::optimize);
+
+    bool had_leading_group = false;
+    if (std::regex_search(work, m, re_lead_group)) {
+        p.release_group   = m[1].str();
+        had_leading_group = true;
+        detail::maskSpan(work, static_cast<size_t>(m.position(0)), m.str(0).size());
+    }
+
+    // ── 2. "WxH" resolution ──────────────────────────────────────────────────
+    // Must run before the year step: "1920x1080" contains 1920, which the year
+    // regex would happily take. Masking it is also the only reason the "1x02"
+    // pattern (step 5c) cannot misfire on it.
+    //   matches: "1920x1080"  "[1280 x 720]"      not: "x265" (no leading digits)
+    static const std::regex re_wxh(
+        R"((?:^|[\s\[\(])(\d{3,4})\s?[xX](\d{3,4})(?=[\s\]\)]|$))",
+        std::regex::icase | std::regex::optimize);
+
+    if (std::regex_search(work, m, re_wxh)) {
+        p.resolution_p = detail::heightToResolution(std::stoi(m[2].str()));
+        markStruct(static_cast<size_t>(m.position(0)));
+        detail::maskSpan(work, static_cast<size_t>(m.position(0)), m.str(0).size());
+    }
+
+    // ── 3. "NNNNp" resolution tokens ─────────────────────────────────────────
+    // Same token set and separator guards as parseResolution() (§ 2) — the
+    // VALUE still comes from that one function; this copy exists to locate and
+    // mask the span, which is what keeps "1080p" out of the title and feeds
+    // first_struct. Every occurrence is masked ("[1080p][HEVC]" style names).
+    static const std::regex re_res_p(
+        R"((?:^|[\s\[\(\-\,])(?:4320|2160|1080|720|576|480)p(?=[\s\]\)\.\,_]|$))",
+        std::regex::icase | std::regex::optimize);
+    {
+        std::vector<std::pair<size_t, size_t>> spans;
+        for (auto it = std::sregex_iterator(work.begin(), work.end(), re_res_p),
+                  end = std::sregex_iterator(); it != end; ++it) {
+            spans.emplace_back(static_cast<size_t>(it->position(0)), it->str(0).size());
+        }
+        if (!spans.empty()) {
+            const int res = parseResolution(work);
+            if (res > 0) p.resolution_p = res;   // the "NNNNp" form outranks WxH
+            markStruct(spans.front().first);
+            for (const auto& [pos, len] : spans) detail::maskSpan(work, pos, len);
+        }
+    }
+
+    // ── 4. Daily air date ────────────────────────────────────────────────────
+    // Before the year step, which would otherwise consume the year part and
+    // leave "03 15" behind. Post-normalize "2024.03.15" arrives as "2024 03 15".
+    // Month/day are range-checked so "Blade Runner 2049 2017 2160p" (year then
+    // a 2-digit-looking run) can never be mistaken for a date.
+    static const std::regex re_daily(
+        R"((?:^|[\s\[\(])((?:19|20)\d{2})[\s\.\-](\d{2})[\s\.\-](\d{2})(?=[\s\]\)]|$))",
+        std::regex::icase | std::regex::optimize);
+
+    if (std::regex_search(work, m, re_daily)) {
+        const int mo = std::stoi(m[2].str());
+        const int da = std::stoi(m[3].str());
+        if (mo >= 1 && mo <= 12 && da >= 1 && da <= 31) {
+            p.is_daily = true;
+            p.air_date = m[1].str() + "-" + m[2].str() + "-" + m[3].str();
+            markStruct(static_cast<size_t>(m.position(0)));
+            detail::maskSpan(work, static_cast<size_t>(m.position(0)), m.str(0).size());
+        }
+    }
+
+    // ── 5. Season / episode — first alternative that hits wins ───────────────
+    // a. "S05E14", with an optional episode range "S01E01-E13"
+    static const std::regex re_sxe(
+        R"(\bS(\d{1,2})\s?E(\d{1,3})(?:\s?-\s?E?(\d{1,3}))?\b)",
+        std::regex::icase | std::regex::optimize);
+    // b. season range "S01-S05" / "S01-05" (reached only when (a) missed, so a
+    //    pack name like "S01E01-E13" is already claimed by (a))
+    static const std::regex re_srange(
+        R"(\bS(\d{1,2})\s?-\s?S?(\d{1,2})\b)",
+        std::regex::icase | std::regex::optimize);
+    // c. "1x02" — safe ONLY because step 2 already masked any "1920x1080"
+    static const std::regex re_nxnn(
+        R"((?:^|[\s\[\(])(\d{1,2})x(\d{2,3})(?=[\s\]\)]|$))",
+        std::regex::icase | std::regex::optimize);
+    // d. spelled out: "Season 2", "Season 1 Episode 5"
+    static const std::regex re_season_word(
+        R"(\bSeasons?\s?(\d{1,2})(?:\s?Episode\s?(\d{1,3}))?\b)",
+        std::regex::icase | std::regex::optimize);
+    // e. episode range in brackets: "(01-24)", "[01~24]"  ⇒ pack
+    static const std::regex re_ep_range(
+        R"([\[\(]\s*0*(\d{1,3})\s?[-~]\s?0*(\d{1,3})\s*[\]\)])",
+        std::regex::icase | std::regex::optimize);
+    // f. "E455", "Ep 5", "Episode 12". "EXTENDED"/"EAC3" cannot match: the
+    //    character after E must be a digit (or the literal "p"/"pisode").
+    static const std::regex re_ep_word(
+        R"(\bEp(?:isode)?\.?\s?0*(\d{1,3})\b|\bE0*(\d{1,3})\b)",
+        std::regex::icase | std::regex::optimize);
+    // g. anime absolute numbering " - 28", "- 05v2" — fansub-only, hence the
+    //    had_leading_group gate: scene names never use it. § 11 guard set:
+    //    the '-' must follow whitespace/start (kills "x265", "Dual-Audio",
+    //    "Spider-Man") and the digits must be followed by a separator (kills
+    //    "1080p" → 'p', "10bit" → 'b', and any longer number).
+    static const std::regex re_abs_dash(
+        R"((?:^|\s)-\s?0*(\d{1,4})(?:v\d+)?(?=[\s\[\(\)\]]|$))",
+        std::regex::icase | std::regex::optimize);
+    // h. bracketed absolute "[13]", "[13v2]"
+    static const std::regex re_abs_bracket(
+        R"(\[0*(\d{1,3})(?:v\d+)?\])",
+        std::regex::icase | std::regex::optimize);
+
+    bool se_found = false;
+    if (std::regex_search(work, m, re_sxe)) {
+        p.season  = std::stoi(m[1].str());
+        p.episode = std::stoi(m[2].str());
+        if (m[3].matched) {
+            const int e2 = std::stoi(m[3].str());
+            if (e2 > p.episode) p.episode_end = e2;
+        }
+        se_found = true;
+    } else if (std::regex_search(work, m, re_srange)) {
+        p.season = std::stoi(m[1].str());
+        const int s2 = std::stoi(m[2].str());
+        if (s2 > p.season) p.season_end = s2;
+        se_found = true;
+    } else if (std::regex_search(work, m, re_nxnn)) {
+        p.season  = std::stoi(m[1].str());
+        p.episode = std::stoi(m[2].str());
+        se_found = true;
+    } else if (std::regex_search(work, m, re_season_word)) {
+        p.season = std::stoi(m[1].str());
+        if (m[2].matched) p.episode = std::stoi(m[2].str());
+        se_found = true;
+    } else if (std::regex_search(work, m, re_ep_range)) {
+        p.episode = std::stoi(m[1].str());
+        const int e2 = std::stoi(m[2].str());
+        if (e2 > p.episode) p.episode_end = e2;
+        se_found = true;
+    } else if (std::regex_search(work, m, re_ep_word)) {
+        p.episode = std::stoi((m[1].matched ? m[1] : m[2]).str());
+        se_found = true;
+    } else if (had_leading_group && std::regex_search(work, m, re_abs_dash)) {
+        p.episode = std::stoi(m[1].str());
+        se_found = true;
+    } else if (had_leading_group && std::regex_search(work, m, re_abs_bracket)) {
+        const int v = std::stoi(m[1].str());
+        // A bare bracketed resolution ("[720]", "[1080]") is not an episode.
+        if (v != 480 && v != 576 && v != 720 && v != 1080) {
+            p.episode = v;
+            se_found  = true;
+        }
+    }
+    if (se_found) {
+        markStruct(static_cast<size_t>(m.position(0)));
+        detail::maskSpan(work, static_cast<size_t>(m.position(0)), m.str(0).size());
+    }
+
+    // ── 6. Year ──────────────────────────────────────────────────────────────
+    // Runs last of the numeric extractors, so WxH / dates / SxxEyy / NNNNp are
+    // already masked. The LAST match wins — scene names put the title before
+    // the year: "Blade Runner 2049 2017" → 2017, "2001 A Space Odyssey 1968"
+    // → 1968.
+    // Exception: a year in the FIRST token is the title ("2012 1080p BluRay").
+    // It stays unmasked and non-structural so the title survives.
+    static const std::regex re_year(
+        R"((?:^|[\s\[\(])((?:19|20)\d{2})(?=[\s\]\)]|$))",
+        std::regex::optimize);
+    {
+        size_t y_pos = 0, y_len = 0, y_tok = 0;
+        int    y_val = 0;
+        for (auto it = std::sregex_iterator(work.begin(), work.end(), re_year),
+                  end = std::sregex_iterator(); it != end; ++it) {
+            y_pos = static_cast<size_t>(it->position(0));
+            y_len = it->str(0).size();
+            y_tok = static_cast<size_t>(it->position(1));
+            y_val = std::stoi(it->str(1));
+        }
+        // normalize() space-pads, so the first token starts at index 1.
+        if (y_val > 0 && y_tok > 1) {
+            p.year = y_val;
+            markStruct(y_pos);
+            detail::maskSpan(work, y_pos, y_len);
+        }
+    }
+
+    // ── 7. Technical / noise vocabulary ──────────────────────────────────────
+    // Values still come from § 3–§ 6; this pass only locates and masks the
+    // tokens so they feed first_struct and never leak into the title.
+    // Deliberately conservative: a false positive here TRUNCATES the title at
+    // the token, so words that also occur in real titles are excluded —
+    // no bare "WEB" ("Charlotte's Web"), "CAM" ("Cam", 2018), "MAX"
+    // ("Mad Max"), "NF", "VF", "TS", "DV". Their compound forms (WEB-DL,
+    // WEBRip, HDCAM, HDTS, Dolby Vision) carry the same signal without the
+    // ambiguity, and isGarbage() (§ 6) still sees the bare forms for scoring.
+    static const std::regex re_noise(
+        R"(\b(?:)"
+        R"(AV1|HEVC|x26[45]|H\s?26[45]|XviD|DivX|10bit|8bit|)"                  // codec
+        R"(HDR10(?:\+|Plus)?|HDR|Dolby\s?Vision|)"                              // hdr
+        R"(REMUX|BDRemux|BluRay|BLU\-?RAY|BDRip|BRRip|BDMux|HDRip|DVDRip|)"     // source
+        R"(DVDScr|WEB\-?DL|WEBDL|WEBMux|WEBRip|HDTV|UHD|)"
+        R"(CAMRip|HDCAM|HDTS|TeleSync|WORKPRINT|SCREENER|)"                     // garbage
+        R"(AAC\d?|AC3|EAC3|DDP?\d?|DTS(?:\-?HD)?|TrueHD|Atmos|FLAC|OPUS|)"      // audio
+        R"(MULTi|VOSTFR|TRUEFRENCH|FRENCH|SUBFRENCH|VFF|VFQ|VFHQ|SUBBED|)"      // language
+        R"(ENGSUB|Dual\s?Audio|Multi\s?Audio|Multi\s?Sub|Subtitle|)"
+        R"(PROPER|REPACK|EXTENDED|REMASTERED|Batch|Complete|Collection|)"       // edition
+        R"(Integrale?|)"
+        R"(AMZN|DSNP|HMAX|ATVP|PCOK)"                                           // services
+        R"()\b)",
+        std::regex::icase | std::regex::optimize);
+    {
+        std::vector<std::pair<size_t, size_t>> spans;
+        for (auto it = std::sregex_iterator(work.begin(), work.end(), re_noise),
+                  end = std::sregex_iterator(); it != end; ++it) {
+            spans.emplace_back(static_cast<size_t>(it->position(0)), it->str(0).size());
+        }
+        if (!spans.empty()) {
+            markStruct(spans.front().first);
+            for (const auto& [pos, len] : spans) detail::maskSpan(work, pos, len);
+        }
+    }
+
+    // ── 8. Trailing scene group ──────────────────────────────────────────────
+    // std::regex has no lookbehind, so the preceding character is captured and
+    // required to be non-space and non-dash: that kills anime " - 13" and
+    // "Title - Subtitle" while keeping "x264-SPARKS".
+    //
+    // Matched against `original`, NOT the masked string — two reasons:
+    //   • step 7 masks "x264", which would leave "-SPARKS" with no prefix char;
+    //   • masking a trailing "2021 1080p" promotes an earlier hyphen to the end
+    //     of the string, so "Spider-Man No Way Home 2021 1080p" would hand back
+    //     the group "Man" and amputate the title.
+    static const std::regex re_tail_group(
+        R"(([^\s\-])-([A-Za-z][A-Za-z0-9]{1,19})\s*$)",
+        std::regex::optimize);
+    // Technical tails are not group names: "...-x265", "WEB-DL", "Dual-Audio".
+    static const std::regex re_not_a_group(
+        R"(^(?:x26[45]|h26[45]|HEVC|AVC|AV1|DL|Rip|WEB|WEBRip|BluRay|REMUX|)"
+        R"(HDR10?|DV|FLAC|AAC|Audio|Sub(?:s|title)?|\d{3,4}p)$)",
+        std::regex::icase | std::regex::optimize);
+
+    if (p.release_group.empty() && std::regex_search(original, m, re_tail_group)) {
+        const std::string cand = m[2].str();
+        if (!std::regex_match(cand, re_not_a_group)) {
+            p.release_group = cand;
+            const size_t dash = static_cast<size_t>(m.position(0)) + m.str(1).size();
+            markStruct(dash);
+            detail::maskSpan(work, dash, m.str(0).size() - m.str(1).size());
+        }
+    }
+
+    // ── 9. Title assembly ────────────────────────────────────────────────────
+    const size_t cut = (first_struct == std::string::npos) ? work.size() : first_struct;
+    p.title = detail::cleanTitle(work.substr(0, cut));
+    // Nothing before the first structural token (e.g. "S01E01 1080p Show"):
+    // fall back to whatever survived masking anywhere in the name.
+    if (p.title.empty()) p.title = detail::cleanTitle(work);
+    return p;
 }
 
 } // namespace media::services::TorrentScorer
