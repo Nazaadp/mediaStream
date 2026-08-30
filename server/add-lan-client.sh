@@ -31,7 +31,20 @@ note() { printf '\033[36m==>\033[0m %s\n' "$1"; }
 ok()   { printf '\033[32m ok\033[0m  %s\n' "$1"; }
 
 [[ $EUID -eq 0 ]] || die "must run as root:  sudo $0 ${1:-<IP>}"
-[[ -f $NFT_FILE ]] || die "$NFT_FILE not found"
+
+# Runs on the Ubuntu HOST, never inside the VM. Easy mistake: this repo is
+# checked out in the guest too, so the script sits there looking runnable. The
+# guest has no LAN-facing rules at all, so fail with the reason rather than a
+# bare "file not found".
+if [[ $(hostname) == mediastream-vm ]] || ! ip link show virbr-sbx &>/dev/null; then
+    die "wrong machine — this configures the HOST perimeter.
+       You look to be inside the VM (no virbr-sbx bridge here).
+       The nftables allowlist lives on the Ubuntu host; the guest sits behind
+       the bridge on 10.66.0.10 with no LAN-facing rules to edit.
+       Run it as:   ssh nazaServer   ->   sudo ~/add-lan-client.sh ${1:-<IP>}"
+fi
+
+[[ -f $NFT_FILE ]] || die "$NFT_FILE not found — is this the right host?"
 command -v nft >/dev/null || die "nft not installed"
 
 # ---------------------------------------------------------------- 1. get IP --
