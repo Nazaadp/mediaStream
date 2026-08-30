@@ -211,6 +211,10 @@ namespace media::services {
                 si.name = s.value("name", "Season " + std::to_string(sn));
                 si.episode_count = s.value("episode_count", 0);
                 si.rating = s.value("vote_average", 0.0f);
+                // TMDB sends air_date as null for seasons that never aired.
+                if (s.contains("air_date") && s["air_date"].is_string()) {
+                    si.air_date = s["air_date"].get<std::string>();
+                }
                 if (s.contains("poster_path") && s["poster_path"].is_string()) {
                     si.poster_url = IMG_BASE + s["poster_path"].get<std::string>();
                 }
@@ -257,6 +261,10 @@ namespace media::services {
                 ei.name = ep.value("name", "Episode " + std::to_string(ei.episode_number));
                 ei.overview = ep.value("overview", "");
                 ei.rating = ep.value("vote_average", 0.0f);
+                // Null for unaired episodes — keep it empty rather than throwing.
+                if (ep.contains("air_date") && ep["air_date"].is_string()) {
+                    ei.air_date = ep["air_date"].get<std::string>();
+                }
                 if (ep.contains("still_path") && ep["still_path"].is_string()) {
                     ei.still_url = STILL_BASE + ep["still_path"].get<std::string>();
                 }

@@ -221,6 +221,7 @@ namespace media::services {
         int episode_count;
         std::string poster_url;
         float rating = 0.0f;
+        std::string air_date;   // TMDB "YYYY-MM-DD"; empty when unknown
     };
 
     // Episode summary (from TMDB)
@@ -231,6 +232,7 @@ namespace media::services {
         std::string overview;
         std::string still_url;
         float rating;
+        std::string air_date;   // TMDB "YYYY-MM-DD"; empty when unknown
     };
 
     // Discovered Content Item

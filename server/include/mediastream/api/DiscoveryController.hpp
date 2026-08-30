@@ -244,6 +244,7 @@ public:
                 sj["episode_count"]  = s.episode_count;
                 sj["poster_url"]     = s.poster_url;
                 sj["rating"]         = s.rating;
+                sj["air_date"]       = s.air_date;
                 arr.push_back(sj);
             }
             auto response = createResponse(Status::CODE_200, arr.dump());
@@ -296,6 +297,7 @@ public:
                 ej["overview"]       = ep.overview;
                 ej["still_url"]      = ep.still_url;
                 ej["rating"]         = ep.rating;
+                ej["air_date"]       = ep.air_date;
                 arr.push_back(ej);
             }
             auto response = createResponse(Status::CODE_200, arr.dump());
