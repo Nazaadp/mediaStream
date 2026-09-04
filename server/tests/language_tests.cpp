@@ -74,6 +74,9 @@ const std::string FLAG_PT = "\xF0\x9F\x87\xB5\xF0\x9F\x87\xB9"; // 🇵🇹
 const std::string FLAG_BR = "\xF0\x9F\x87\xA7\xF0\x9F\x87\xB7"; // 🇧🇷
 const std::string FLAG_IT = "\xF0\x9F\x87\xAE\xF0\x9F\x87\xB9"; // 🇮🇹
 const std::string FLAG_JP = "\xF0\x9F\x87\xAF\xF0\x9F\x87\xB5"; // 🇯🇵
+const std::string FLAG_FR = "\xF0\x9F\x87\xAB\xF0\x9F\x87\xB7"; // 🇫🇷
+const std::string FLAG_RU = "\xF0\x9F\x87\xB7\xF0\x9F\x87\xBA"; // 🇷🇺
+const std::string FLAG_UA = "\xF0\x9F\x87\xBA\xF0\x9F\x87\xA6"; // 🇺🇦
 
 lang::Detection A(const std::string& name) { CASE(name); return lang::detectAudio(name); }
 lang::Detection S(const std::string& name) { CASE(name); return lang::detectSubs(name); }
@@ -431,15 +434,112 @@ void testReportedFailures() {
         EQ_B(lang::matchesFilter(d.join(), d.multi, {"MULTI"}), true);
     }
     {
-        CASE("report 5: How to Train Your Dragon — EN/IT must fail an ES filter");
+        CASE("report 5: How to Train Your Dragon — real Torrentio blocks");
+        // Verbatim from server/example_response.md (tt0892769, 2026-09-04).
+        // These four are the entries the user saw when asking for Spanish:
+        // the ITA one and the DUAL one used to pass on the MULTI wildcard,
+        // while the only genuinely Spanish release was dropped as "EN".
         std::vector<TorrentQuality> v = {
-            mk("How.to.Train.Your.Dragon.2010.1080p.BluRay.x264-AMIABLE"),
-            mk("How.to.Train.Your.Dragon.2010.iTALiAN.MULTi.1080p.BluRay.x264"),
-            mk("Como.Entrenar.a.tu.Dragon.2010.Latino.1080p.BluRay.x264"),
+            mk("How to Train Your Dragon (2010) 1080p BrRip x264 - 1.4GB - YIFY\n"
+               "\xF0\x9F\x91\xA4 100 \xF0\x9F\x92\xBE 1.4 GB \xE2\x9A\x99\xEF\xB8\x8F ThePirateBay"),
+            mk("Dragon Trainer (2010) WEBRip 1080p x264 EAC3 ITA ENG SUB ITA ENG - Lullozzo\n"
+               "\xF0\x9F\x91\xA4 80 \xF0\x9F\x92\xBE 4.56 GB \xE2\x9A\x99\xEF\xB8\x8F ThePirateBay\n"
+               + FLAG_GB + " / " + FLAG_IT),
+            mk("How to Train Your Dragon 2010 1080p AMZN WEB-DL H.264 DUAL EAC5.1 TSRG\n"
+               "\xF0\x9F\x91\xA4 6 \xF0\x9F\x92\xBE 4.57 GB \xE2\x9A\x99\xEF\xB8\x8F ThePirateBay\n"
+               "Dual Audio"),
+            mk("How.To.Train.Your.Dragon.2010.1080p.BluRay.ENG.LATINO.DTS.5.1.H264-BEN.THE.MEN\n"
+               "\xF0\x9F\x91\xA4 11 \xF0\x9F\x92\xBE 8.86 GB \xE2\x9A\x99\xEF\xB8\x8F TorrentGalaxy\n"
+               + FLAG_GB + " / " + FLAG_MX),
         };
-        EQ_S(joinTitles(filterTitles(v, {"ES-LA"})),
-             "Como.Entrenar.a.tu.Dragon.2010.Latino.1080p.BluRay.x264");
+        // Asking for Latin American Spanish returns exactly the LATINO rip.
+        EQ_S(joinTitles(filterTitles(v, {"ES-LA"})).substr(0, 46),
+             "How.To.Train.Your.Dragon.2010.1080p.BluRay.ENG");
+        // Asking for Castilian returns nothing — 🇲🇽 is not 🇪🇸, and no other
+        // release here claims Spanish at all.
         EQ_S(joinTitles(filterTitles(v, {"ES"})), "(none)");
+        // All four still reachable when no language filter is set.
+        EQ_B(filterTitles(v, {}).size() == 4, true);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Real Torrentio title blocks, verbatim from server/example_response.md.
+// Torrentio's flag line is CHANNEL-TAGGED ("Multi Audio" / "Multi Subs" /
+// "Dual Audio" / bare) — these pin that routing, which is not something the
+// synthetic fixtures above would have caught.
+// ─────────────────────────────────────────────────────────────────────────────
+void testRealTorrentioBlocks() {
+    {
+        CASE("real: bare flag line is audio — ENG.LATINO with 🇬🇧 / 🇲🇽");
+        auto d = lang::detectAudio(
+            "How.To.Train.Your.Dragon.2010.1080p.BluRay.ENG.LATINO.DTS.5.1.H264-BEN.THE.MEN\n"
+            + FLAG_GB + " / " + FLAG_MX);
+        EQ_S(d.join(), "EN/ES-LA");
+        EQ_B(d.inferred, false);
+    }
+    {
+        CASE("real: 'Multi Audio' line routes flags to audio");
+        const std::string t =
+            "How to Train Your Dragon (2010) MULTi VFF 2160p 10bit 4KLight HDR BluRay x265 - QTZ.mkv\n"
+            "\xF0\x9F\x91\xA4 7 \xF0\x9F\x92\xBE 3.19 GB \xE2\x9A\x99\xEF\xB8\x8F 1337x\n"
+            "Multi Audio / " + FLAG_GB + " / " + FLAG_FR;
+        auto d = lang::detectAudio(t);
+        EQ_S(d.join(), "EN/FR");
+        EQ_B(d.multi, true);
+    }
+    {
+        CASE("real: 'Multi Subs' line must NOT become audio tracks or multi-audio");
+        const std::string t =
+            "How To Train Your Dragon 1 And 2 - 2010-2014 Eng Ita Multi-Subs\n"
+            "\xF0\x9F\x91\xA4 4 \xF0\x9F\x92\xBE 6.7 GB \xE2\x9A\x99\xEF\xB8\x8F ThePirateBay\n"
+            "Multi Subs / " + FLAG_GB + " / " + FLAG_IT;
+        auto a = lang::detectAudio(t);
+        // The bare "MULTI" inside "Multi Subs" must not answer a multi-AUDIO
+        // request — that is a subtitle claim, not an audio one.
+        EQ_B(a.multi, false);
+        EQ_B(lang::matchesFilter(a.join(), a.multi, {"MULTI"}), false);
+        // …while the flags land on the channel Torrentio actually named.
+        auto s = lang::detectSubs(t);
+        EQ_S(s.join(), "EN/IT");
+        EQ_B(s.multi, true);
+    }
+    {
+        CASE("real: 'Dual Audio' with no flags stays unknown-but-multi");
+        auto d = lang::detectAudio(
+            "How to Train Your Dragon 2010 1080p AMZN WEB-DL H.264 DUAL EAC5.1 TSRG\n"
+            "\xF0\x9F\x91\xA4 6 \xF0\x9F\x92\xBE 4.57 GB \xE2\x9A\x99\xEF\xB8\x8F ThePirateBay\n"
+            "Dual Audio");
+        EQ_S(d.join(), "N/A");
+        EQ_B(d.multi, true);
+        EQ_B(lang::matchesFilter(d.join(), d.multi, {"ES"}),    false);
+        EQ_B(lang::matchesFilter(d.join(), d.multi, {"MULTI"}), true);
+    }
+    {
+        CASE("real: Torrentio maps all Portuguese to 🇵🇹 — 'Dublado' refines it");
+        // BluDV is a Brazilian tracker and the release says Dublado, but the
+        // flag is 🇵🇹. One track, refined by the text — not two.
+        auto d = lang::detectAudio(
+            "Como Treinar o seu Drag\xC3\xA3o (2010) BDRip 1080p Dublado ToTT\n"
+            "\xF0\x9F\x91\xA4 5 \xF0\x9F\x92\xBE 1.64 GB \xE2\x9A\x99\xEF\xB8\x8F BluDV\n"
+            + FLAG_GB + " / " + FLAG_PT);
+        EQ_S(d.join(), "EN/PT-BR");
+    }
+    {
+        CASE("real: three-flag Rutracker line");
+        auto d = lang::detectAudio(
+            "How to Train Your Dragon [2010 UHD BDRemux 2160p HDR10] Dub + DVO + Ukr\n"
+            "\xF0\x9F\x91\xA4 3 \xF0\x9F\x92\xBE 38.96 GB \xE2\x9A\x99\xEF\xB8\x8F Rutracker\n"
+            + FLAG_GB + " / " + FLAG_RU + " / " + FLAG_UA);
+        EQ_S(d.join(), "EN/RU/UK");
+    }
+    {
+        CASE("real: no flag line at all falls back to the scene convention");
+        auto d = lang::detectAudio(
+            "How to Train Your Dragon (2010) 1080p BrRip x264 - 1.4GB - YIFY\n"
+            "\xF0\x9F\x91\xA4 100 \xF0\x9F\x92\xBE 1.4 GB \xE2\x9A\x99\xEF\xB8\x8F ThePirateBay");
+        EQ_S(d.join(), "EN");
+        EQ_B(d.inferred, true);
     }
 }
 
@@ -454,6 +554,7 @@ int main() {
     testSubtitles();
     testFilter();
     testReportedFailures();
+    testRealTorrentioBlocks();
 
     std::cout << (g_failures == 0 ? "PASS" : "FAILED") << "  "
               << (g_checks - g_failures) << "/" << g_checks << " assertions\n";

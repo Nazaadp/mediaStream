@@ -259,6 +259,53 @@ inline void collectFlagLangs(const std::string& raw, Detection& out) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// § 3b  Flag lines are channel-tagged
+//
+// Torrentio puts its flags on the last line of the title block, and prefixes
+// that line to say WHICH channel they describe. Observed forms:
+//
+//   Multi Audio / 🇬🇧 / 🇫🇷          ← audio tracks
+//   Multi Subs / 🇬🇧 / 🇮🇹           ← SUBTITLE tracks
+//   Dual Audio                        ← audio, count only, no languages
+//   🇬🇧 / 🇮🇹                        ← bare: audio
+//
+// Reading every flag as audio would make a multi-SUBTITLE release answer an
+// audio request for those languages — the same false positive this module
+// exists to kill, just arriving through a different door. So flags are
+// collected per line and routed by that line's prefix.
+// ─────────────────────────────────────────────────────────────────────────────
+struct FlagLines {
+    Detection audio;
+    Detection subs;
+};
+
+inline FlagLines collectFlagLines(const std::string& raw) {
+    FlagLines out;
+    size_t start = 0;
+    for (;;) {
+        const size_t nl  = raw.find('\n', start);
+        const size_t end = (nl == std::string::npos) ? raw.size() : nl;
+        const std::string line = raw.substr(start, end - start);
+
+        Detection here;
+        collectFlagLangs(line, here);
+        if (!here.codes.empty()) {
+            const std::string n = normalize(line);
+            const bool is_subs = hasToken(n, "SUB")   || hasToken(n, "SUBS") ||
+                                 hasToken(n, "SUBTITLE") ||
+                                 hasToken(n, "SUBTITLES") ||
+                                 hasToken(n, "LEGENDAS");
+            Detection& target = is_subs ? out.subs : out.audio;
+            for (const auto& c : here.codes) target.add(c);
+        }
+
+        if (nl == std::string::npos) break;
+        start = nl + 1;
+    }
+    return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // § 4  Text token vocabulary
 //
 // `weak` aliases are short or ambiguous enough to false-positive on their own
@@ -362,7 +409,27 @@ inline const std::vector<Alias>& audioAliases() {
     return kTable;
 }
 
+// "Multi Subs" / "Multi-Sub" declares SUBTITLE tracks. Blank those phrases out
+// before testing for a multi-AUDIO marker, or the bare "MULTI" inside them
+// makes every multi-subtitle release answer a multi-audio request — Torrentio
+// emits "Multi Subs / 🇬🇧 / 🇮🇹" lines, so this is not hypothetical.
+inline std::string maskSubtitleMulti(std::string n) {
+    static constexpr std::string_view kPhrases[] = {
+        "MULTI SUBS", "MULTI SUB", "MULTISUBS", "MULTISUB",
+        "MULTI SUBTITLES", "MULTI SUBTITLE", "MULTISUBTITLES", "MULTISUBTITLE",
+    };
+    for (auto p : kPhrases) {
+        const std::string needle = " " + std::string(p) + " ";
+        for (size_t pos = n.find(needle); pos != std::string::npos;
+             pos = n.find(needle, pos + 1)) {
+            n.replace(pos + 1, p.size(), std::string(p.size(), ' '));
+        }
+    }
+    return n;
+}
+
 // "This release has more than one audio track" — without saying which.
+// Callers pass a string already run through maskSubtitleMulti().
 inline bool hasMultiMarker(const std::string& n) {
     static constexpr std::string_view kTokens[] = {
         "MULTI", "MULTI AUDIO", "MULTIAUDIO", "MULTIAUDIOS", "MULTILANG",
@@ -389,16 +456,16 @@ inline Detection detectAudioWithDefault(const std::string& raw,
     Detection d;
 
     // 1. Flags — authoritative, so they go in first and set the display order.
-    //    Kept in their own Detection as well: § 4 below may demote a text-
-    //    derived code, but never one a flag declared.
-    Detection flags;
-    collectFlagLangs(raw, flags);
+    //    Only the ones on an AUDIO-tagged line (§ 3b); a "Multi Subs" line's
+    //    flags belong to detectSubs. Kept in their own Detection as well:
+    //    step 4 may demote a text-derived code, but never a flagged one.
+    const Detection flags = collectFlagLines(raw).audio;
     for (const auto& c : flags.codes) d.add(c);
 
     const std::string n = normalize(raw);
 
-    // 2. Multi / dual marker.
-    d.multi = hasMultiMarker(n);
+    // 2. Multi / dual marker, with the subtitle-multi phrases masked out.
+    d.multi = hasMultiMarker(maskSubtitleMulti(n));
 
     // 3. Strong text tokens, then weak ones once something has corroborated.
     const auto& table = audioAliases();
@@ -416,8 +483,11 @@ inline Detection detectAudioWithDefault(const std::string& raw,
     //    how that name spells the language. Two things override this and keep
     //    both codes, because both are real dual releases:
     //      • an explicit parent marker ("CASTELLANO", "ES ES", "PT PT")
-    //      • the parent came from a FLAG. 🇪🇸 alongside 🇲🇽 is two declared
-    //        audio tracks, not one word qualifying another.
+    //      • BOTH codes came from flags. 🇪🇸 alongside 🇲🇽 is two separately
+    //        declared audio tracks. One flag plus a text tag is not: Torrentio
+    //        maps all Portuguese to 🇵🇹, so a Brazilian dub arrives as
+    //        "🇵🇹 + Dublado" — one track the text refines, and reporting PT
+    //        as well would over-claim a European track that isn't there.
     struct ParentRule {
         std::string_view child;
         std::string_view parent;
@@ -429,7 +499,7 @@ inline Detection detectAudioWithDefault(const std::string& raw,
     };
     for (const auto& r : kRules) {
         if (!d.has(r.child) || !d.has(r.parent)) continue;
-        if (flags.has(r.parent)) continue;
+        if (flags.has(r.parent) && flags.has(r.child)) continue;
         bool keep_parent = false;
         for (auto t : r.explicit_parent) {
             if (!t.empty() && hasToken(n, t)) { keep_parent = true; break; }
@@ -476,6 +546,10 @@ inline Detection detectAnimeAudio(const std::string& raw) {
 inline Detection detectSubs(const std::string& raw) {
     Detection d;
     const std::string n = normalize(raw);
+
+    // 0. Flags from a SUBTITLE-tagged line (§ 3b) — Torrentio's "Multi Subs /
+    //    🇬🇧 / 🇮🇹". The one place subtitle languages are stated exactly.
+    for (const auto& c : collectFlagLines(raw).subs.codes) d.add(c);
 
     // 1. Glued / idiomatic subtitle tags.
     struct SubTag { std::string_view token, code; };
