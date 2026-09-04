@@ -94,17 +94,20 @@ endif()
 set_property(TARGET mediastream_server PROPERTY CXX_STANDARD 20)
 set_property(TARGET MediaCore PROPERTY CXX_STANDARD 20)
 
-# --- 7. Parser test binary (opt-in) ---
-# TorrentScorer.hpp is header-only and std-only, so this target needs no Conan
-# dependencies and links nothing. OFF by default so quick-build.sh is untouched:
+# --- 7. Parser test binaries (opt-in) ---
+# TorrentScorer.hpp and LanguageTags.hpp are header-only and std-only, so these
+# targets need no Conan dependencies and link nothing. OFF by default so
+# quick-build.sh is untouched:
 #   cmake -B build -DBUILD_PARSER_TESTS=ON && cmake --build build -j
-#   ./build/parser_tests
+#   ./build/parser_tests && ./build/language_tests
 option(BUILD_PARSER_TESTS "Build torrent-name parser tests" OFF)
 if (BUILD_PARSER_TESTS)
-    add_executable(parser_tests tests/parser_tests.cpp)
-    target_include_directories(parser_tests PRIVATE include)
-    set_property(TARGET parser_tests PROPERTY CXX_STANDARD 20)
-    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-        target_compile_options(parser_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    endif()
+    foreach(test_name parser_tests language_tests)
+        add_executable(${test_name} tests/${test_name}.cpp)
+        target_include_directories(${test_name} PRIVATE include)
+        set_property(TARGET ${test_name} PROPERTY CXX_STANDARD 20)
+        if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+            target_compile_options(${test_name} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+        endif()
+    endforeach()
 endif()

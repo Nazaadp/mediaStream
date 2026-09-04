@@ -114,8 +114,8 @@ namespace media::services {
                     TorrentQuality tq;
                     tq.quality = "1080p"; // Default assumption
                     tq.type = "Nyaa";
-                    tq.audio_languages    = parseNyaaAudioLangs(full_title);
-                    tq.subtitle_languages = parseTorrentSubtitleLangs(full_title);
+                    stampAnimeAudioLangs(tq, full_title);
+                    stampSubtitleLangs(tq, full_title);
                     
                     if (std::regex_search(item_content, seeders_match, seeders_regex)) {
                         tq.seeders = std::stoi(seeders_match[1].str());
@@ -270,8 +270,8 @@ namespace media::services {
                 tq.quality = full_title; // keep quality in sync for legacy consumers
                 tq.type    = "Nyaa";
                 tq.source  = "Nyaa";
-                tq.audio_languages    = parseNyaaAudioLangs(full_title);
-                tq.subtitle_languages = parseTorrentSubtitleLangs(full_title);
+                stampAnimeAudioLangs(tq, full_title);
+                stampSubtitleLangs(tq, full_title);
 
                 // Nyaa batches ("(01-24)", "[Batch]") bundle whole seasons but
                 // carry no file index — flag them so the client can badge them

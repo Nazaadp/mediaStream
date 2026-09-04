@@ -181,12 +181,17 @@ namespace media::services {
                         tq.size_bytes = parseSizeStr(full_title);
                         tq.seeders = parseSeeders(full_title);
                         tq.leechers = 0; // Not provided by Torrentio
-                        // Languages are parsed from the FULL title block: the textual
-                        // lang tags (MULTi / Dual / ITA / AMZN …) may sit on a line
-                        // other than the filename, so the whole block is the richest
-                        // source. (The 🇬🇧/🇷🇺 flag emojis are ignored by the parser.)
-                        tq.audio_languages    = parseTorrentAudioLangs(full_title);
-                        tq.subtitle_languages = parseTorrentSubtitleLangs(full_title);
+                        // Languages come from the FULL title block, never the
+                        // filename alone. Torrentio puts one flag emoji per
+                        // audio track it detected (🇬🇧🇪🇸🇲🇽…) on its own line —
+                        // that is the only per-track, structured language data
+                        // any of our sources provides, and it is what separates
+                        // a real Spanish dub from a MULTi release that happens
+                        // to carry Portuguese. The textual tags (MULTi / Dual /
+                        // ITA / Latino) live on other lines again, so the whole
+                        // block is the only complete input.
+                        stampAudioLangs(tq, full_title);
+                        stampSubtitleLangs(tq, full_title);
 
                         // enrich() parses resolution/codec/HDR/release type from the
                         // release name and rewrites the legacy quality string.

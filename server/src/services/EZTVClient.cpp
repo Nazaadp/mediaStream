@@ -255,8 +255,8 @@ namespace media::services {
                     tq.quality = t_title; // keep quality in sync for legacy consumers
                     tq.type    = "EZTV";
                     tq.source  = "EZTV";
-                    tq.audio_languages    = parseTorrentAudioLangs(parse_name);
-                    tq.subtitle_languages = parseTorrentSubtitleLangs(parse_name);
+                    stampAudioLangs(tq, parse_name);
+                    stampSubtitleLangs(tq, parse_name);
 
                     const long long sb = jint(t, "size_bytes");
                     const long long sd = jint(t, "seeds");

@@ -99,7 +99,13 @@ namespace media::services {
                             tq.source = "YTS";
                             tq.title = content.title + " (" + std::to_string(content.year) + ") ["
                                        + tq.quality + "." + tq.type + "]";
+                            // YTS exposes no per-release language field, only the
+                            // FILM's original language — a fact about the movie,
+                            // not about this rip's audio track. Treat it as the
+                            // inference it is so the client can mark it and the
+                            // filter never mistakes it for an asserted track.
                             tq.audio_languages    = isoToDisplayLang(content.language);
+                            tq.audio_inferred     = true;
                             tq.subtitle_languages = "N/A";
                             tq.size_bytes = torrent.value("size_bytes", 0LL);
                             tq.hash = torrent.value("hash", "");

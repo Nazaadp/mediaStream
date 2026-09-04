@@ -1,5 +1,7 @@
 #pragma once
 
+#include "mediastream/services/LanguageTags.hpp"
+
 #include <string>
 #include <vector>
 #include <memory>
@@ -17,8 +19,18 @@ namespace media::services {
         std::string type;               // encode type or legacy source tag
         std::string title;              // display name (1st line for Torrentio)
         std::string source;             // "YTS", "TorrentGalaxy", "EZTV", "NyaaSi", etc.
-        std::string audio_languages;    // "EN", "FR", "EN/FR", "MULTI", "N/A"
-        std::string subtitle_languages; // "N/A", "EN", "FR", "MULTI"
+        // ── Languages (media::services::lang, see LanguageTags.hpp) ──────────
+        // The strings hold ONLY what the release name actually asserts —
+        // "EN/ES-LA", or "N/A" when it says nothing. "MULTI" is not a value
+        // here: it is the `*_multi` flag, so a release can be both multi-audio
+        // and enumerated. `*_inferred` marks a code that came from convention
+        // (untagged release ⇒ English) rather than from the name, which is
+        // what lets the filter tell a real Spanish dub from an unlabelled rip.
+        std::string audio_languages;    // "EN", "EN/ES-LA", "N/A"
+        std::string subtitle_languages; // "N/A", "EN", "FR"
+        bool        audio_multi{false};
+        bool        audio_inferred{false};
+        bool        subs_multi{false};
         int64_t     size_bytes{0};
         std::string magnet_uri;
         std::string hash;
@@ -59,103 +71,35 @@ namespace media::services {
     };
 
     // ── Torrent name language helpers (used by all clients) ──────────────────
+    //
+    // Detection lives in LanguageTags.hpp. These three wrappers are the only
+    // thing a source client needs: hand them the richest name available and
+    // they stamp all four language fields consistently, so no client can
+    // half-populate them.
 
-    inline std::string parseTorrentAudioLangs(const std::string& name) {
-        std::string n = name;
-        std::transform(n.begin(), n.end(), n.begin(), ::toupper);
-        for (auto& c : n) if (c == '.' || c == '_' || c == '-') c = ' ';
-        n = " " + n + " ";
-
-        bool vostfr = (n.find("VOSTFR") != std::string::npos);
-        std::string result = vostfr ? "" : "EN";
-
-        // Collect language tags in order
-        if (n.find(" FRENCH ") != std::string::npos || n.find(" TRUEFRENCH ") != std::string::npos ||
-            n.find(" VF ") != std::string::npos || n.find(" VFHQ ") != std::string::npos) {
-            if (result.find("FR") == std::string::npos) result += (result.empty() ? "FR" : "/FR");
-        }
-        if (n.find(" SPANISH ") != std::string::npos || n.find(" ESP ") != std::string::npos) {
-            if (result.find("ES") == std::string::npos) result += (result.empty() ? "ES" : "/ES");
-        }
-        if (n.find(" GERMAN ") != std::string::npos || n.find(" GER ") != std::string::npos) {
-            if (result.find("DE") == std::string::npos) result += (result.empty() ? "DE" : "/DE");
-        }
-        if (n.find(" PORTUGUESE ") != std::string::npos || n.find(" POR ") != std::string::npos) {
-            if (result.find("PT") == std::string::npos) result += (result.empty() ? "PT" : "/PT");
-        }
-        if (n.find(" ITALIAN ") != std::string::npos || n.find(" ITA ") != std::string::npos) {
-            if (result.find("IT") == std::string::npos) result += (result.empty() ? "IT" : "/IT");
-        }
-        if (n.find(" JAPANESE ") != std::string::npos || n.find(" JPN ") != std::string::npos) {
-            if (result.find("JA") == std::string::npos) result += (result.empty() ? "JA" : "/JA");
-        }
-        if (n.find(" KOREAN ") != std::string::npos || n.find(" KOR ") != std::string::npos) {
-            if (result.find("KO") == std::string::npos) result += (result.empty() ? "KO" : "/KO");
-        }
-        if (n.find(" RUSSIAN ") != std::string::npos || n.find(" RUS ") != std::string::npos) {
-            if (result.find("RU") == std::string::npos) result += (result.empty() ? "RU" : "/RU");
-        }
-        if (n.find(" HINDI ") != std::string::npos) {
-            if (result.find("HI") == std::string::npos) result += (result.empty() ? "HI" : "/HI");
-        }
-        if (n.find(" ARABIC ") != std::string::npos) {
-            if (result.find("AR") == std::string::npos) result += (result.empty() ? "AR" : "/AR");
-        }
-        if (n.find(" TURKISH ") != std::string::npos) {
-            if (result.find("TR") == std::string::npos) result += (result.empty() ? "TR" : "/TR");
-        }
-
-        // If no specific languages found, check for MULTI/DUAL tags
-        if (result.empty() || result == "EN") {
-            if (n.find(" MULTI ") != std::string::npos || n.find(" MULTI AUDIO") != std::string::npos) {
-                return "MULTI";
-            }
-            if (n.find(" DUAL ") != std::string::npos || n.find(" DUAL AUDIO") != std::string::npos) {
-                return "DUAL";
-            }
-        }
-
-        return result.empty() ? "EN" : result;
+    // Scene / P2P sources (Torrentio, EZTV). For Torrentio pass the FULL title
+    // block, not just the filename — the flag emojis and the MULTi tag live on
+    // their own lines, and the flags are the only per-track language data any
+    // source gives us.
+    inline void stampAudioLangs(TorrentQuality& tq, const std::string& name) {
+        const lang::Detection d = lang::detectAudio(name);
+        tq.audio_languages = d.join();
+        tq.audio_multi     = d.multi;
+        tq.audio_inferred  = d.inferred;
     }
 
-    inline std::string parseTorrentSubtitleLangs(const std::string& name) {
-        std::string n = name;
-        std::transform(n.begin(), n.end(), n.begin(), ::toupper);
-        for (auto& c : n) if (c == '.' || c == '_') c = ' ';
-        n = " " + n + " ";
-
-        if (n.find(" MULTI SUB") != std::string::npos) return "MULTI";
-
-        // Streaming sources typically include multi-language subtitles
-        if (n.find(" NF ") != std::string::npos  || n.find("-NF ")   != std::string::npos ||
-            n.find(" AMZN ") != std::string::npos || n.find("-AMZN ") != std::string::npos ||
-            n.find(" DSNP ") != std::string::npos || n.find(" HMAX ") != std::string::npos ||
-            n.find(" ATVP ") != std::string::npos || n.find(" PCOK ") != std::string::npos) {
-            return "MULTI";
-        }
-        if (n.find("VOSTFR") != std::string::npos ||
-            n.find(" SUBFRENCH") != std::string::npos) return "FR";
-        if (n.find(" SUBBED") != std::string::npos ||
-            n.find(" ENGSUB") != std::string::npos ||
-            n.find(" ENG SUB") != std::string::npos) return "EN";
-
-        return "N/A";
+    // Nyaa: Japanese audio by default, [Dual-Audio] ⇒ JA+EN.
+    inline void stampAnimeAudioLangs(TorrentQuality& tq, const std::string& name) {
+        const lang::Detection d = lang::detectAnimeAudio(name);
+        tq.audio_languages = d.join();
+        tq.audio_multi     = d.multi;
+        tq.audio_inferred  = d.inferred;
     }
 
-    // Nyaa-specific audio language parser.
-    // Nyaa c=1_2 (English-translated anime) is Japanese audio by default.
-    // Detects [Dual-Audio] / Dual.Audio → "JA/EN", Multi → "MULTI".
-    inline std::string parseNyaaAudioLangs(const std::string& name) {
-        std::string n = name;
-        std::transform(n.begin(), n.end(), n.begin(), ::toupper);
-        for (auto& c : n) if (c == '.' || c == '_' || c == '-') c = ' ';
-        n = " " + n + " ";
-
-        // MULTI overrides DUAL
-        if (n.find(" MULTI") != std::string::npos) return "MULTI";
-        // "DUAL AUDIO" covers [Dual-Audio], Dual.Audio, [Dual Audio] after normalization
-        if (n.find("DUAL AUDIO") != std::string::npos || n.find(" DUAL ") != std::string::npos) return "JA/EN";
-        return "JA";
+    inline void stampSubtitleLangs(TorrentQuality& tq, const std::string& name) {
+        const lang::Detection d = lang::detectSubs(name);
+        tq.subtitle_languages = d.join();
+        tq.subs_multi         = d.multi;
     }
 
     // Map an ISO 639-1 language code (lowercase, e.g. "en", "fr") to uppercase display.
@@ -170,46 +114,34 @@ namespace media::services {
 
     struct TorrentFilterCriteria {
         std::unordered_set<std::string> resolutions; // "2160", "1080", ...
-        std::unordered_set<std::string> audio;       // uppercase ISO codes
+        // Uppercase language codes, plus the "MULTI" pseudo-code meaning
+        // "any release with multiple tracks, whichever they are".
+        std::unordered_set<std::string> audio;
         std::unordered_set<std::string> subs;
         bool empty() const { return resolutions.empty() && audio.empty() && subs.empty(); }
     };
 
-    // True when any '/'-separated language tag intersects the wanted set.
-    inline bool torrentLangMatches(const std::string& langs,
-                                   const std::unordered_set<std::string>& wanted) {
-        std::stringstream ss(langs);
-        std::string tok;
-        while (std::getline(ss, tok, '/')) {
-            if (wanted.count(tok)) return true;
-        }
-        return false;
-    }
-
     // Applies the criteria in place. Must run on the FULL aggregated list,
     // before score-sort truncation — otherwise 4K releases (which score
     // highest) crowd every lower-resolution pick out of the capped result.
-    // Resolution is strict (unknown/0 dropped when a res filter is active);
-    // language metadata is best-effort name parsing, so MULTI/DUAL and
-    // unknown values pass rather than punishing torrents for missing tags.
+    //
+    // Every dimension is strict: a torrent passes only on evidence. Resolution
+    // drops unknown/0; language drops anything the release name never claimed,
+    // including multi-audio releases unless MULTI is one of the requested
+    // codes. The old rule let MULTI / DUAL / N/A satisfy every language filter,
+    // which inverted the feature — asking for Spanish returned nothing BUT
+    // multi-audio releases, and those mostly carry other languages entirely.
+    // See lang::matchesFilter for the full rationale.
     inline void applyTorrentFilters(std::vector<TorrentQuality>& torrents,
                                     const TorrentFilterCriteria& f) {
         if (f.empty()) return;
         std::erase_if(torrents, [&](const TorrentQuality& t) {
             if (!f.resolutions.empty() &&
                 !f.resolutions.count(std::to_string(t.resolution_p))) return true;
-            if (!f.audio.empty()) {
-                const std::string& a = t.audio_languages;
-                const bool pass = a.empty() || a == "MULTI" || a == "DUAL" ||
-                                  a == "N/A" || torrentLangMatches(a, f.audio);
-                if (!pass) return true;
-            }
-            if (!f.subs.empty()) {
-                const std::string& s = t.subtitle_languages;
-                const bool pass = s.empty() || s == "MULTI" || s == "N/A" ||
-                                  torrentLangMatches(s, f.subs);
-                if (!pass) return true;
-            }
+            if (!lang::matchesFilter(t.audio_languages, t.audio_multi, f.audio))
+                return true;
+            if (!lang::matchesFilter(t.subtitle_languages, t.subs_multi, f.subs))
+                return true;
             return false;
         });
     }

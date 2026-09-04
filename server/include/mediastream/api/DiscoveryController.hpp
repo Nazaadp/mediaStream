@@ -198,6 +198,12 @@ public:
                 tj["source"]             = t.source;
                 tj["audio_languages"]    = t.audio_languages;
                 tj["subtitle_languages"] = t.subtitle_languages;
+                // Multi-track flag and the "this code is a convention guess,
+                // not a claim the release name made" flag — the client badges
+                // both, so an inferred EN never looks like a verified track.
+                tj["audio_multi"]        = t.audio_multi;
+                tj["audio_inferred"]     = t.audio_inferred;
+                tj["subs_multi"]         = t.subs_multi;
                 tj["size_bytes"]         = t.size_bytes;
                 tj["hash"]               = t.hash;
                 tj["magnet_uri"]         = t.magnet_uri;
@@ -334,6 +340,12 @@ public:
                 tj["source"]             = t.source;
                 tj["audio_languages"]    = t.audio_languages;
                 tj["subtitle_languages"] = t.subtitle_languages;
+                // Multi-track flag and the "this code is a convention guess,
+                // not a claim the release name made" flag — the client badges
+                // both, so an inferred EN never looks like a verified track.
+                tj["audio_multi"]        = t.audio_multi;
+                tj["audio_inferred"]     = t.audio_inferred;
+                tj["subs_multi"]         = t.subs_multi;
                 tj["size_bytes"]         = t.size_bytes;
                 tj["hash"]               = t.hash;
                 tj["magnet_uri"]         = t.magnet_uri;
